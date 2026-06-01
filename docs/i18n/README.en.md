@@ -22,7 +22,7 @@ The product also addresses a practical performance problem: Claude Code and Node
 
 ## Platform Support
 
-The project targets Windows, macOS, and Linux. Windows x64 is validated locally. macOS Intel, macOS Apple Silicon, and Linux packages are built through GitHub Actions. ARM64 support is part of the release strategy, with native macOS ARM64 builds and source-level support for other ARM64 targets.
+The project targets Windows, macOS, and Linux. Windows x64 is validated locally. GitHub Actions builds Windows x64, Windows ARM64, macOS Intel, macOS Apple Silicon, Linux x64, and Linux ARM64 packages on matching runner architectures.
 
 ## Installation
 

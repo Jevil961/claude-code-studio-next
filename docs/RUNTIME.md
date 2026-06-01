@@ -17,11 +17,11 @@ The product targets Windows, macOS, and Linux through Tauri 2.x.
 | Platform | Local status | Release path |
 | --- | --- | --- |
 | Windows x64 | Validated locally | Local build plus GitHub Actions release artifact. |
-| Windows ARM64 | Source and workflow target | Build on Windows runner/toolchain support. |
+| Windows ARM64 | Workflow target | Built on native `windows-11-arm` runner. |
 | macOS Intel | Workflow target | Built on native macOS x64 runner. |
 | macOS Apple Silicon | Workflow target | Built on native macOS ARM64 runner. |
 | Linux x64 | Workflow target | Built on Ubuntu with WebKit/GTK dependencies. |
-| Linux ARM64 | Source-ready target | Build on ARM64 Linux runner or local ARM64 host. |
+| Linux ARM64 | Workflow target | Built on native `ubuntu-22.04-arm` runner. |
 
 Cross-platform packages are built in GitHub Actions because native desktop installers are most reliable when produced on the matching operating system.
 

@@ -19,10 +19,12 @@
 ## Cross-Platform Packaging
 
 - [ ] Windows x64 installer is uploaded to GitHub Releases.
+- [ ] Windows ARM64 installer is uploaded to GitHub Releases.
 - [ ] Windows portable zip is uploaded to GitHub Releases.
 - [ ] macOS Intel DMG is produced by GitHub Actions.
 - [ ] macOS Apple Silicon DMG is produced by GitHub Actions.
-- [ ] Linux AppImage or Debian package is produced by GitHub Actions.
+- [ ] Linux x64 AppImage or Debian package is produced by GitHub Actions.
+- [ ] Linux ARM64 AppImage or Debian package is produced by GitHub Actions.
 - [ ] ARM64 support notes are visible in README and runtime documentation.
 
 ## P1 QA Scenarios

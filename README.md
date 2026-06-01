@@ -24,11 +24,11 @@ The project is designed around two product goals:
 
 | Operating system | CPU architecture | Distribution status |
 | --- | --- | --- |
-| Windows 10/11 | x64, ARM64 | Local Windows x64 build is validated. GitHub Actions is configured for Windows release packaging. |
-| macOS | Apple Silicon ARM64, Intel x64 | GitHub Actions release workflow builds macOS artifacts on native macOS runners. |
-| Linux | x64, ARM64-ready source | Linux packaging is configured for AppImage and Debian packages; ARM64 can be built from source or runner infrastructure. |
+| Windows 10/11 | x64, ARM64 | Windows x64 is validated locally. GitHub Actions builds Windows x64 and Windows ARM64 packages. |
+| macOS | Intel x64, Apple Silicon ARM64 | GitHub Actions builds separate Intel and Apple Silicon artifacts on native macOS runners. |
+| Linux | x64, ARM64 | GitHub Actions builds separate x64 and ARM64 AppImage/Debian artifacts on native Ubuntu runners. |
 
-The current local artifact in this repository is the Windows build. Cross-platform artifacts are intentionally produced by GitHub Actions so macOS and Linux packages are built on native systems instead of on the maintainer's Windows machine.
+The current local artifact in this repository is the Windows x64 build. Cross-platform artifacts are intentionally produced by GitHub Actions so Windows ARM64, macOS, and Linux packages are built on native runner systems instead of on the maintainer's Windows machine.
 
 ## Installation
 

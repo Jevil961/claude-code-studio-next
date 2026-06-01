@@ -51,7 +51,7 @@ Initial Tauri desktop release.
 - Usage cache and diagnostics export.
 - Automatic backups before destructive settings or Skills writes.
 - Windows installer and portable package.
-- GitHub Actions workflow for Windows, macOS, and Linux release artifacts.
+- GitHub Actions workflow for Windows x64/ARM64, macOS Intel/Apple Silicon, and Linux x64/ARM64 release artifacts.
 - Full GitHub README plus UN official language documentation set.
 
 ## Requirements
