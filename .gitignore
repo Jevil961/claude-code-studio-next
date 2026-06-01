@@ -6,6 +6,8 @@ dist-ai-classify/
 dist-next/
 dist-tauri/
 src-tauri/target/
+src-tauri/node/*
+!src-tauri/node/.gitkeep
 tmp/
 *.db
 *.log

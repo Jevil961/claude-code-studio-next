@@ -25,9 +25,11 @@ The product targets Windows, macOS, and Linux through Tauri 2.x.
 
 Cross-platform packages are built in GitHub Actions because native desktop installers are most reliable when produced on the matching operating system.
 
-## Node Requirement
+## Node Runtime Strategy
 
-Node.js 18+ must be available in `PATH`.
+Packaged desktop builds include a private Node runtime for the hidden backend. This prevents the app from closing immediately on machines where Node.js is not installed globally.
+
+System Node.js/npm may still be needed for npm-based Claude Code installation and updates.
 
 Recommended development install path on this Windows machine:
 
@@ -44,13 +46,7 @@ The diagnostics report records:
 
 ## Missing Node Behavior
 
-If Node is missing, the Tauri backend cannot start. For this release, Node is a hard prerequisite and should be installed before launching the app. The long-term options are:
-
-1. Bundle a private Node runtime beside the app.
-2. Port backend modules to Rust.
-3. Keep Node as a documented prerequisite.
-
-The current recommendation is option 3 for `0.1.0`, then option 1 before a wider public consumer release.
+If the bundled backend runtime cannot start, the Tauri window still opens and backend calls return a visible `BACKEND_UNAVAILABLE` error instead of closing the app.
 
 ## Backups
 

@@ -19,22 +19,39 @@ use tauri::{Emitter, Manager};
 use tokio::{sync::oneshot, time::{timeout, Duration}};
 
 struct BackendState {
-    stdin: Arc<Mutex<ChildStdin>>,
+    stdin: Option<Arc<Mutex<ChildStdin>>>,
     pending: Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>>,
-    child: Arc<Mutex<Child>>,
+    child: Option<Arc<Mutex<Child>>>,
+    startup_error: Option<String>,
     next_id: AtomicU64,
 }
 
 impl Drop for BackendState {
     fn drop(&mut self) {
-        if let Ok(mut stdin) = self.stdin.lock() {
-            let _ = stdin.write_all(b"{\"id\":\"shutdown\",\"method\":\"reconnectClaude\",\"args\":[]}\n");
-            let _ = stdin.flush();
+        if let Some(stdin) = &self.stdin {
+            if let Ok(mut stdin) = stdin.lock() {
+                let _ = stdin.write_all(b"{\"id\":\"shutdown\",\"method\":\"reconnectClaude\",\"args\":[]}\n");
+                let _ = stdin.flush();
+            }
         }
         thread::sleep(StdDuration::from_millis(500));
-        if let Ok(mut child) = self.child.lock() {
-            let _ = child.kill();
-            let _ = child.wait();
+        if let Some(child) = &self.child {
+            if let Ok(mut child) = child.lock() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+    }
+}
+
+impl BackendState {
+    fn unavailable(error: String) -> Self {
+        Self {
+            stdin: None,
+            pending: Arc::new(Mutex::new(HashMap::new())),
+            child: None,
+            startup_error: Some(error),
+            next_id: AtomicU64::new(1),
         }
     }
 }
@@ -62,11 +79,17 @@ fn backend_root(app: &tauri::AppHandle) -> PathBuf {
 fn node_binary(app: &tauri::AppHandle, root: &PathBuf) -> String {
     let mut candidates = vec![
         root.join("node").join("node.exe"),
+        root.join("node").join("node"),
         root.join("node.exe"),
+        root.join("node"),
     ];
     if let Ok(resource_dir) = app.path().resource_dir() {
         candidates.push(resource_dir.join("node").join("node.exe"));
+        candidates.push(resource_dir.join("node").join("node"));
         candidates.push(resource_dir.join("node.exe"));
+        candidates.push(resource_dir.join("node"));
+        candidates.push(resource_dir.join("src-tauri").join("node").join("node.exe"));
+        candidates.push(resource_dir.join("src-tauri").join("node").join("node"));
     }
     for candidate in candidates {
         if candidate.exists() {
@@ -142,17 +165,23 @@ fn spawn_backend(app: &tauri::AppHandle) -> Result<BackendState, String> {
     });
 
     Ok(BackendState {
-        stdin: Arc::new(Mutex::new(stdin)),
+        stdin: Some(Arc::new(Mutex::new(stdin))),
         pending,
-        child: Arc::new(Mutex::new(child)),
+        child: Some(Arc::new(Mutex::new(child))),
+        startup_error: None,
         next_id: AtomicU64::new(1),
     })
 }
 
 #[tauri::command]
 async fn backend_call(state: tauri::State<'_, BackendState>, method: String, args: Vec<Value>) -> Result<Value, String> {
+    if let Some(error) = &state.startup_error {
+        return Ok(json!({ "ok": false, "error": error, "code": "BACKEND_UNAVAILABLE" }));
+    }
+    let Some(stdin) = state.stdin.as_ref().map(Arc::clone) else {
+        return Ok(json!({ "ok": false, "error": "Backend is unavailable", "code": "BACKEND_UNAVAILABLE" }));
+    };
     let id = state.next_id.fetch_add(1, Ordering::Relaxed).to_string();
-    let stdin = Arc::clone(&state.stdin);
     let pending_queue = Arc::clone(&state.pending);
     let (tx, rx) = oneshot::channel();
 
@@ -249,7 +278,13 @@ fn close_window(window: tauri::Window) -> Value {
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            let state = spawn_backend(&app.handle())?;
+            let state = match spawn_backend(&app.handle()) {
+                Ok(state) => state,
+                Err(error) => {
+                    let _ = app.handle().emit("backend:stderr", json!({ "line": error.clone() }));
+                    BackendState::unavailable(error)
+                }
+            };
             app.manage(state);
             Ok(())
         })

@@ -35,6 +35,7 @@ rmSync(zipPath, { force: true });
 mkdirSync(portableDir, { recursive: true });
 
 cpSync(exe, join(portableDir, "Claude Code Studio Next.exe"));
+if (existsSync(join(root, "src-tauri", "node"))) cpSync(join(root, "src-tauri", "node"), join(portableDir, "node"), { recursive: true });
 cpSync(join(root, "src"), join(portableDir, "src"), { recursive: true });
 cpSync(join(root, "node_modules", "sql.js"), join(portableDir, "node_modules", "sql.js"), { recursive: true });
 cpSync(join(root, "README.md"), join(portableDir, "README.md"));

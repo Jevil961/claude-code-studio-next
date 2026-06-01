@@ -74,4 +74,5 @@ Download the package that matches your operating system and CPU architecture fro
 
 - Node.js 18 or newer.
 - Claude Code installed, or available to install during setup guidance.
+- Packaged desktop builds include the runtime needed to launch the app.
 ```

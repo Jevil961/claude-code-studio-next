@@ -9,6 +9,7 @@
 - [ ] `npm run build` creates an NSIS installer under `src-tauri\target\release\bundle\nsis`.
 - [ ] `npm run build:portable` creates `dist-tauri\Claude-Code-Studio-Next-portable.zip`.
 - [ ] Opening the exe does not show a cmd window.
+- [ ] Opening the installed app works when system `node.exe` is not in `PATH`.
 - [ ] Closing the app removes the backend `node.exe`.
 - [ ] Node.js 18+ is installed and visible in Diagnostics.
 - [ ] Claude Code detection succeeds or the install guidance is shown.

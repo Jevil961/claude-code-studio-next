@@ -55,8 +55,9 @@ macOS packages are published only after Developer ID signing and Apple notarizat
 
 Requirements:
 
-- Node.js 18 or newer.
 - Claude Code installed, or available to install through the app guidance.
+- Packaged desktop builds include the runtime needed to launch the app.
+- System Node.js/npm may still be needed for installing or updating Claude Code through npm-based workflows.
 
 ## Product Tour
 

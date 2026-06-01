@@ -24,27 +24,27 @@ jobs:
         include:
           - name: windows-x64
             os: windows-latest
-            command: npm run tauri -- build --target x86_64-pc-windows-msvc --bundles nsis
+            command: npm run prepare:runtime && npm run tauri -- build --target x86_64-pc-windows-msvc --bundles nsis
             rustTarget: x86_64-pc-windows-msvc
           - name: windows-arm64
             os: windows-11-arm
-            command: npm run tauri -- build --target aarch64-pc-windows-msvc --bundles nsis
+            command: npm run prepare:runtime && npm run tauri -- build --target aarch64-pc-windows-msvc --bundles nsis
             rustTarget: aarch64-pc-windows-msvc
           - name: macos-x64
             os: macos-13
-            command: npm run tauri -- build --target x86_64-apple-darwin --bundles dmg,app
+            command: npm run prepare:runtime && npm run tauri -- build --target x86_64-apple-darwin --bundles dmg,app
             rustTarget: x86_64-apple-darwin
           - name: macos-arm64
             os: macos-14
-            command: npm run tauri -- build --target aarch64-apple-darwin --bundles dmg,app
+            command: npm run prepare:runtime && npm run tauri -- build --target aarch64-apple-darwin --bundles dmg,app
             rustTarget: aarch64-apple-darwin
           - name: linux-x64
             os: ubuntu-22.04
-            command: npm run tauri -- build --target x86_64-unknown-linux-gnu --bundles appimage,deb
+            command: npm run prepare:runtime && npm run tauri -- build --target x86_64-unknown-linux-gnu --bundles appimage,deb
             rustTarget: x86_64-unknown-linux-gnu
           - name: linux-arm64
             os: ubuntu-22.04-arm
-            command: npm run tauri -- build --target aarch64-unknown-linux-gnu --bundles appimage,deb
+            command: npm run prepare:runtime && npm run tauri -- build --target aarch64-unknown-linux-gnu --bundles appimage,deb
             rustTarget: aarch64-unknown-linux-gnu
 
     steps:

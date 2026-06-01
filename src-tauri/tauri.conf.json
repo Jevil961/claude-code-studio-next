@@ -43,6 +43,7 @@
     ],
     "resources": [
       "../src",
+      "../src-tauri/node",
       "../node_modules/sql.js"
     ],
     "windows": {

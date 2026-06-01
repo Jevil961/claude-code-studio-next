@@ -25,11 +25,46 @@ export async function getDb() {
   if (dbPromise) return dbPromise;
   dbPromise = (async () => {
   const SQL = await initSqlJs();
-  if (!existsSync(dbPath)) throw new Error("DB not found: " + dbPath);
-  db = new SQL.Database(readFileSync(dbPath));
+  mkdirSync(dirname(dbPath), { recursive: true });
+  db = existsSync(dbPath) ? new SQL.Database(readFileSync(dbPath)) : new SQL.Database();
+  initializeSchema();
+  persist();
   return db;
   })();
   return dbPromise;
+}
+
+function initializeSchema() {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS providers (
+      id TEXT PRIMARY KEY,
+      app_type TEXT NOT NULL DEFAULT 'claude',
+      name TEXT NOT NULL,
+      settings_config TEXT NOT NULL DEFAULT '{}',
+      category TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL DEFAULT 0,
+      meta TEXT NOT NULL DEFAULT '{}',
+      is_current INTEGER NOT NULL DEFAULT 0,
+      provider_type TEXT NOT NULL DEFAULT ''
+    );
+    CREATE TABLE IF NOT EXISTS skills (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      directory TEXT NOT NULL UNIQUE,
+      enabled_claude INTEGER NOT NULL DEFAULT 1,
+      installed_at INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS mcp_servers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      server_config TEXT NOT NULL DEFAULT '{}',
+      description TEXT NOT NULL DEFAULT '',
+      tags TEXT NOT NULL DEFAULT '[]',
+      enabled_claude INTEGER NOT NULL DEFAULT 1
+    );
+  `);
 }
 
 export function setDbForTest(nextDb, nextPath = null, nextClaudeSettingsPath = null) {
