@@ -101,6 +101,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
+          overwrite_files: true
           files: |
             src-tauri/target/**/bundle/**/*.exe
             src-tauri/target/**/bundle/**/*.msi
