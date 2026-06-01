@@ -14,6 +14,7 @@ Lead with user value:
 - Cleaner desktop behavior through controlled Claude Code task lifecycles.
 - Cross-platform packaging for Windows, macOS, and Linux across x64 and ARM64.
 - MIT-licensed source for community review and contribution.
+- macOS downloads must be signed and notarized before they are presented as normal user installers.
 
 Avoid leading with maintainer details:
 
@@ -63,6 +64,7 @@ Claude Code Studio Next is a local-first desktop control center for Claude Code.
 - Controlled Claude Code task lifecycle to reduce leftover background processes.
 - Local backups before risky settings or Skills changes.
 - Cross-platform release strategy for Windows, macOS, and Linux on x64 and ARM64.
+- macOS packages are published only after Developer ID signing and Apple notarization.
 
 ## Install
 

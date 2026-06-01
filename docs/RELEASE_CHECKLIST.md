@@ -15,6 +15,7 @@
 - [ ] README points to Tauri scripts only.
 - [ ] GitHub Actions `ci.yml` passes on Windows, macOS, and Linux.
 - [ ] GitHub Actions `release.yml` publishes artifacts on a `v*` tag.
+- [ ] macOS release assets are signed with Developer ID and notarized by Apple before publication.
 
 ## Cross-Platform Packaging
 

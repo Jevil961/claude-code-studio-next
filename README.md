@@ -33,7 +33,7 @@ Claude Code Studio Next turns that operational layer into a focused desktop work
 | Operating system | CPU architecture | Package style |
 | --- | --- | --- |
 | Windows 10/11 | x64, ARM64 | Installer and portable package |
-| macOS | Intel x64, Apple Silicon ARM64 | DMG |
+| macOS | Intel x64, Apple Silicon ARM64 | Signed and notarized DMG |
 | Linux | x64, ARM64 | AppImage and Debian package |
 
 ## Installation
@@ -42,12 +42,14 @@ Claude Code Studio Next turns that operational layer into a focused desktop work
 
 Download the latest build from [GitHub Releases](https://github.com/Jevil961/claude-code-studio-next/releases).
 
+macOS packages are published only after Developer ID signing and Apple notarization are configured. This avoids the "app is damaged" Gatekeeper experience after download.
+
 | Platform | Choose this package |
 | --- | --- |
 | Windows x64 | `*_x64-setup.exe` or portable zip |
 | Windows ARM64 | `*_arm64-setup.exe` when available |
-| macOS Intel | `*_x64.dmg` |
-| macOS Apple Silicon | `*_aarch64.dmg` or `*_arm64.dmg` |
+| macOS Intel | signed and notarized `*_x64.dmg` |
+| macOS Apple Silicon | signed and notarized `*_aarch64.dmg` or `*_arm64.dmg` |
 | Linux x64 | `*_amd64.AppImage` or `*_amd64.deb` |
 | Linux ARM64 | `*_arm64.AppImage` or `*_arm64.deb` |
 
