@@ -1,37 +1,37 @@
 # Product Review
 
-## Current Verdict
+## PM Verdict
 
-The project is ready for a `0.1.0` GitHub submission as a cross-platform Tauri studio with a locally validated Windows artifact and GitHub Actions configured for native package builds.
+The project has a stronger open-source story when it is positioned as a Claude Code operations workspace, not as a packaging exercise.
 
-## What Is Strong
+The public page should answer four questions quickly:
 
-- Tauri is now the single desktop framework boundary.
-- Older desktop-shell paths were removed, so packaging is no longer ambiguous.
-- Claude Code runner behavior is memory-conscious and focused on cleanup after task completion.
-- Diagnostics, backups, provider management, Skills, MCP, and usage visibility form a coherent product surface.
-- The GitHub presentation now includes professional images and full language documentation.
+- What problem does it solve?
+- Why is it different from terminal-only Claude Code use?
+- Which platforms can users install?
+- Can contributors understand the project structure?
 
-## Release Framing
+## Real Product Highlights
 
-Position this as a local desktop workbench for power users, not as a finished mass-market app.
+- **Operational clarity**: provider settings, model presets, Skills, MCP services, project history, diagnostics, and usage are brought into one interface.
+- **Workflow identity**: users can treat Skills as role-based working environments instead of a flat folder of tools.
+- **Local-first trust**: data, backups, and diagnostics stay on the machine.
+- **Process discipline**: Claude Code tasks are treated as bounded sessions, reducing leftover process clutter.
+- **Recovery-oriented design**: risky writes are backed up first.
+- **Power-user fit**: the app is for people who already rely on Claude Code and need more control, not a generic AI chat client.
+- **Cross-platform ambition**: release planning covers Windows, macOS, and Linux across x64 and ARM64.
 
-Supported positioning:
+## Public Copy Rules
 
-- Windows 10/11, macOS, and Linux.
-- x64 and ARM64 release strategy.
-- Node.js 18+ runtime prerequisite.
-- Claude Code installed or installable.
-- Rust only for development and release builds.
+- Do not lead with internal paths, Git rules, or release mechanics.
+- Do not call the README itself a feature.
+- Do not over-explain implementation before explaining value.
+- Keep limitations in roadmap or maintainer docs unless they affect installation.
+- Make architecture visible only when it helps users trust the product.
 
-## Remaining Non-Blocking Work
+## Remaining Product Work
 
-- Code signing.
-- Auto-update channel.
-- Bundled private Node runtime.
-- Expanded ARM64 release infrastructure beyond native macOS ARM64.
-- End-user onboarding copy inside the app.
-
-## Upload Rule
-
-Commit source, docs, workflows, and assets. Publish generated installers and archives in GitHub Releases.
+- First-run setup should become simpler.
+- Runtime prerequisites should eventually be reduced.
+- Signed releases and auto-update will improve trust.
+- Screenshots from the real app should replace abstract imagery over time.

@@ -1,20 +1,32 @@
 # GitHub Submission Guide
 
-## Release Positioning
+This document is for maintainers. It keeps public-facing messaging separate from packaging and repository operations.
 
-Claude Code Studio Next `0.1.0` is a Tauri-first desktop studio for users who want a cleaner control surface around Claude Code across Windows, macOS, and Linux.
+## Public Positioning
 
-Present it as:
+Claude Code Studio Next is a local-first desktop control center for Claude Code.
 
-- A cross-platform Tauri desktop studio.
-- A Claude Code provider, Skills, MCP, project, diagnostics, and runner manager.
-- A memory-conscious local tool, not a cloud service.
-- A repository with clean source code and release binaries published through GitHub Releases.
+Lead with user value:
+
+- One place to manage providers, models, Skills, MCP services, projects, conversations, diagnostics, and usage visibility.
+- Identity-based Skills workflows for people who switch between roles or task modes.
+- Local-first data ownership with backups before risky settings changes.
+- Cleaner desktop behavior through controlled Claude Code task lifecycles.
+- Cross-platform packaging for Windows, macOS, and Linux across x64 and ARM64.
+- MIT-licensed source for community review and contribution.
+
+Avoid leading with maintainer details:
+
+- Internal artifact paths.
+- Git upload rules.
+- CI workflow mechanics.
+- "We made the README professional" style statements.
+- Nonessential implementation disclaimers in release highlights.
 
 ## Suggested GitHub Description
 
 ```text
-Cross-platform Tauri desktop studio for Claude Code providers, Skills, MCP services, project history, diagnostics, and memory-conscious runner control.
+Local-first desktop control center for Claude Code providers, Skills, MCP services, project memory, diagnostics, and clean task execution.
 ```
 
 ## Suggested Topics
@@ -31,6 +43,8 @@ mcp
 skills
 developer-tools
 local-first
+ai-workflow
+mit-license
 ```
 
 ## Suggested Release Notes
@@ -38,31 +52,24 @@ local-first
 ```markdown
 # Claude Code Studio Next 0.1.0
 
-Initial Tauri desktop release.
+Claude Code Studio Next is a local-first desktop control center for Claude Code. This first release focuses on making advanced Claude Code workflows easier to organize, inspect, and run cleanly.
 
 ## Highlights
 
-- Tauri shell with hidden Node backend.
-- Provider and model preset management.
-- Identity-based Skills sync.
-- MCP service management.
-- Claude Code project and conversation navigation.
-- Memory-first runner behavior and process cleanup.
-- Usage cache and diagnostics export.
-- Automatic backups before destructive settings or Skills writes.
-- Windows installer and portable package.
-- GitHub Actions workflow for Windows x64/ARM64, macOS Intel/Apple Silicon, and Linux x64/ARM64 release artifacts.
-- Full GitHub README plus UN official language documentation set.
+- Unified workspace for providers, model presets, Skills, MCP services, projects, conversations, diagnostics, and usage visibility.
+- Identity-based Skills workflows for switching between roles, projects, or working styles.
+- MCP service management from a desktop interface.
+- Project and conversation navigation for Claude Code history.
+- Controlled Claude Code task lifecycle to reduce leftover background processes.
+- Local backups before risky settings or Skills changes.
+- Cross-platform release strategy for Windows, macOS, and Linux on x64 and ARM64.
+
+## Install
+
+Download the package that matches your operating system and CPU architecture from this release page.
 
 ## Requirements
 
-- Windows, macOS, or Linux.
-- Node.js 18+ in PATH.
-- Claude Code installed or installable.
-
-## Notes
-
-- This release is not code-signed.
-- Node.js is still a prerequisite.
-- Auto-update is not enabled yet.
+- Node.js 18 or newer.
+- Claude Code installed, or available to install during setup guidance.
 ```

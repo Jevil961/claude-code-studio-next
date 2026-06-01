@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Tauri desktop studio for Claude Code providers, skills, MCP, projects, and runners.",
   "author": "Jevil",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {

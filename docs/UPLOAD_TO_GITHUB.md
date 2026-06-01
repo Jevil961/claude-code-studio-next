@@ -10,6 +10,7 @@ This file is the source-of-truth checklist for keeping the repository clean and 
 .gitignore
 CHANGELOG.md
 CONTRIBUTING.md
+LICENSE
 README.md
 SECURITY.md
 docs/
@@ -71,7 +72,7 @@ git status --short --ignored
 Stage only uploadable files:
 
 ```powershell
-git add .github .gitattributes .gitignore CHANGELOG.md CONTRIBUTING.md README.md SECURITY.md docs package.json package-lock.json public scripts src src-tauri test
+git add .github .gitattributes .gitignore CHANGELOG.md CONTRIBUTING.md LICENSE README.md SECURITY.md docs package.json package-lock.json public scripts src src-tauri test
 ```
 
 Verify staged files:
