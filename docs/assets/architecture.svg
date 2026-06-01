@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+  <title id="title">Claude Code Studio Next architecture</title>
+  <desc id="desc">A clean architecture diagram showing the Tauri desktop shell, hidden Node backend, local data, Claude Code runner, and operating system integrations.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#10131a"/>
+      <stop offset="1" stop-color="#1b1f2a"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#232a36"/>
+      <stop offset="1" stop-color="#171c25"/>
+    </linearGradient>
+    <style>
+      .title{font:700 34px Segoe UI,Inter,Arial,sans-serif;fill:#f8fafc}
+      .subtitle{font:400 17px Segoe UI,Inter,Arial,sans-serif;fill:#aeb8c8}
+      .label{font:700 20px Segoe UI,Inter,Arial,sans-serif;fill:#f8fafc}
+      .text{font:400 15px Segoe UI,Inter,Arial,sans-serif;fill:#c9d3e3}
+      .small{font:600 13px Segoe UI,Inter,Arial,sans-serif;fill:#95a3b8}
+      .card{fill:url(#panel);stroke:#384254;stroke-width:1.2}
+      .accent{fill:#33d6a6}
+      .blue{fill:#4aa3ff}
+      .purple{fill:#9b7cff}
+      .line{stroke:#536071;stroke-width:2.2;fill:none;marker-end:url(#arrow)}
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#536071"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="520" rx="28" fill="url(#bg)"/>
+  <text class="title" x="56" y="68">Runtime architecture</text>
+  <text class="subtitle" x="56" y="100">A native Tauri shell with a hidden Node backend and short-lived Claude Code task runners.</text>
+
+  <rect class="card" x="56" y="150" width="250" height="210" rx="16"/>
+  <circle class="blue" cx="86" cy="186" r="9"/>
+  <text class="label" x="106" y="193">Tauri desktop</text>
+  <text class="text" x="82" y="234">Window lifecycle</text>
+  <text class="text" x="82" y="264">Native dialogs</text>
+  <text class="text" x="82" y="294">Clipboard and paths</text>
+  <text class="text" x="82" y="324">Packaging and cleanup</text>
+
+  <rect class="card" x="386" y="125" width="280" height="260" rx="16"/>
+  <circle class="accent" cx="416" cy="162" r="9"/>
+  <text class="label" x="436" y="169">Hidden Node backend</text>
+  <text class="text" x="412" y="210">Provider and model logic</text>
+  <text class="text" x="412" y="240">Skills and MCP management</text>
+  <text class="text" x="412" y="270">Project/session indexing</text>
+  <text class="text" x="412" y="300">Diagnostics and usage cache</text>
+  <text class="text" x="412" y="330">Claude runner orchestration</text>
+
+  <rect class="card" x="746" y="92" width="190" height="146" rx="16"/>
+  <circle class="purple" cx="776" cy="128" r="9"/>
+  <text class="label" x="796" y="135">Local data</text>
+  <text class="text" x="772" y="174">SQL.js database</text>
+  <text class="text" x="772" y="204">Backups and caches</text>
+
+  <rect class="card" x="746" y="282" width="190" height="146" rx="16"/>
+  <circle class="blue" cx="776" cy="318" r="9"/>
+  <text class="label" x="796" y="325">Claude Code</text>
+  <text class="text" x="772" y="364">Task process</text>
+  <text class="text" x="772" y="394">Streaming output</text>
+
+  <rect class="card" x="1006" y="177" width="138" height="166" rx="16"/>
+  <circle class="accent" cx="1036" cy="214" r="9"/>
+  <text class="label" x="1056" y="221">OS</text>
+  <text class="text" x="1032" y="260">Windows</text>
+  <text class="text" x="1032" y="290">macOS</text>
+  <text class="text" x="1032" y="320">Linux</text>
+
+  <path class="line" d="M306 255 C336 255 350 255 386 255"/>
+  <path class="line" d="M666 220 C696 190 710 165 746 165"/>
+  <path class="line" d="M666 310 C702 330 710 355 746 355"/>
+  <path class="line" d="M936 165 C970 188 986 216 1006 248"/>
+  <path class="line" d="M936 355 C970 330 986 300 1006 272"/>
+
+  <text class="small" x="56" y="444">Design principle: keep the UI native and calm, keep backend work explicit, and keep Claude Code processes short-lived.</text>
+</svg>

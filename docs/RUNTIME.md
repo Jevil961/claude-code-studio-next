@@ -2,7 +2,7 @@
 
 ## Current Architecture
 
-The app is a Tauri shell with a hidden Node backend:
+Claude Code Studio Next is a Tauri shell with a hidden Node backend:
 
 - Tauri owns the window, native commands, packaging, and process cleanup.
 - `src/backend-host.mjs` owns database access, Skills/MCP/provider operations, project indexing, diagnostics, and Claude runner orchestration.
@@ -10,11 +10,26 @@ The app is a Tauri shell with a hidden Node backend:
 
 This keeps the UI lightweight while avoiding a risky full backend rewrite in the same release.
 
+## Platform Strategy
+
+The product targets Windows, macOS, and Linux through Tauri 2.x.
+
+| Platform | Local status | Release path |
+| --- | --- | --- |
+| Windows x64 | Validated locally | Local build plus GitHub Actions release artifact. |
+| Windows ARM64 | Source and workflow target | Build on Windows runner/toolchain support. |
+| macOS Intel | Workflow target | Built on native macOS x64 runner. |
+| macOS Apple Silicon | Workflow target | Built on native macOS ARM64 runner. |
+| Linux x64 | Workflow target | Built on Ubuntu with WebKit/GTK dependencies. |
+| Linux ARM64 | Source-ready target | Build on ARM64 Linux runner or local ARM64 host. |
+
+Cross-platform packages are built in GitHub Actions because native desktop installers are most reliable when produced on the matching operating system.
+
 ## Node Requirement
 
 Node.js 18+ must be available in `PATH`.
 
-Recommended install path on this machine:
+Recommended development install path on this Windows machine:
 
 ```text
 E:\Nodejs\node.exe
@@ -25,7 +40,7 @@ The diagnostics report records:
 - `nodePath`
 - `nodeVersion`
 - backend pid
-- related `node`, `claude`, and `msedgewebview2` processes
+- related `node`, `claude`, and WebView processes
 
 ## Missing Node Behavior
 
@@ -35,7 +50,7 @@ If Node is missing, the Tauri backend cannot start. For this release, Node is a 
 2. Port backend modules to Rust.
 3. Keep Node as a documented prerequisite.
 
-The current recommendation is option 3 for local/private use, then option 1 before public distribution.
+The current recommendation is option 3 for `0.1.0`, then option 1 before a wider public consumer release.
 
 ## Backups
 

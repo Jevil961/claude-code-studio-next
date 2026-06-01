@@ -1,10 +1,8 @@
 # What To Upload To GitHub
 
-This file is the source-of-truth upload checklist for the repository.
+This file is the source-of-truth checklist for keeping the repository clean and GitHub-ready.
 
-## Upload These Files And Folders
-
-Commit these to GitHub:
+## Commit These Files And Folders
 
 ```text
 .github/
@@ -24,17 +22,21 @@ src-tauri/
 test/
 ```
 
-## Important Notes
+Important committed subfolders:
 
-Upload `src-tauri/`, but do not upload `src-tauri/target/`.
+```text
+.github/workflows/
+docs/assets/
+docs/i18n/
+src-tauri/capabilities/
+src-tauri/icons/
+```
 
-Upload `src-tauri/Cargo.lock`. This is an application, so the lockfile should be committed for reproducible builds.
+Commit `src-tauri/Cargo.lock` because this is an application and reproducible desktop builds matter. Commit `package-lock.json` for reproducible Node installs.
 
-Upload `package-lock.json`. It locks the Node dependency tree for reproducible installs.
+## Do Not Commit Local Outputs
 
-## Do Not Upload These Files And Folders
-
-These are local dependencies, build outputs, logs, local profiles, or private/generated data:
+These are dependencies, build products, logs, local profiles, or private/generated data:
 
 ```text
 .claude/
@@ -55,26 +57,14 @@ tmp/
 *.tmp
 ```
 
-Specific local files currently excluded:
-
-```text
-Claude-Code-Studio-Next-v0.1.0.zip
-app-run.log
-app-stderr.log
-app-stdout.log
-```
+Release binaries belong in GitHub Releases, not in Git history.
 
 ## Git Commands
 
-Check what will be committed:
+Check the repository:
 
 ```powershell
 git status --short
-```
-
-Check ignored local/build files:
-
-```powershell
 git status --short --ignored
 ```
 
@@ -93,28 +83,34 @@ git diff --cached --name-only
 Commit:
 
 ```powershell
-git commit -m "Initial Tauri desktop studio release"
+git commit -m "Prepare professional cross-platform GitHub release"
 ```
 
-## GitHub Releases
+## GitHub Release Assets
 
-Do not commit release binaries to the repository. Upload these files to GitHub Releases instead:
+Upload generated products to GitHub Releases:
 
 ```text
 src-tauri/target/release/bundle/nsis/Claude Code Studio Next_0.1.0_x64-setup.exe
 dist-tauri/Claude-Code-Studio-Next-portable.zip
+GitHub Actions generated macOS/Linux artifacts
 ```
 
-## Before First Push
+## Before Push Or Release
 
 Run:
 
 ```powershell
-npm run release:check
+npm install
+npm run check
+npm test
+cargo check --manifest-path src-tauri\Cargo.toml
+npm run build
+npm run build:portable
 ```
 
-Expected result:
+For a full local Windows gate:
 
-```text
-Release check passed.
+```powershell
+npm run release:check
 ```

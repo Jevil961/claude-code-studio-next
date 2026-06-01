@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">Installation flow</title>
+  <desc id="desc">A three step installation flow: choose platform, download package, launch Claude Code Studio Next.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f7fafc"/>
+      <stop offset="1" stop-color="#eef2f7"/>
+    </linearGradient>
+    <style>
+      .title{font:700 32px Segoe UI,Inter,Arial,sans-serif;fill:#121826}
+      .sub{font:400 16px Segoe UI,Inter,Arial,sans-serif;fill:#506070}
+      .step{font:700 20px Segoe UI,Inter,Arial,sans-serif;fill:#121826}
+      .text{font:400 15px Segoe UI,Inter,Arial,sans-serif;fill:#526172}
+      .card{fill:#fff;stroke:#d9e0ea;stroke-width:1.2}
+      .pill{fill:#121826}
+      .pillText{font:700 13px Segoe UI,Inter,Arial,sans-serif;fill:#fff}
+      .line{stroke:#9aa8b8;stroke-width:2.4;fill:none;marker-end:url(#arrow)}
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#9aa8b8"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="360" rx="26" fill="url(#bg)"/>
+  <text class="title" x="52" y="62">Installation experience</text>
+  <text class="sub" x="52" y="92">Pick the native package for your system, keep binaries in Releases, and keep the repository clean.</text>
+
+  <rect class="card" x="70" y="144" width="280" height="144" rx="16"/>
+  <rect class="pill" x="98" y="172" width="78" height="28" rx="14"/>
+  <text class="pillText" x="121" y="191">Step 1</text>
+  <text class="step" x="98" y="232">Choose platform</text>
+  <text class="text" x="98" y="260">Windows, macOS, or Linux</text>
+
+  <rect class="card" x="460" y="144" width="280" height="144" rx="16"/>
+  <rect class="pill" x="488" y="172" width="78" height="28" rx="14"/>
+  <text class="pillText" x="511" y="191">Step 2</text>
+  <text class="step" x="488" y="232">Download release</text>
+  <text class="text" x="488" y="260">Installer, portable zip, DMG, AppImage, or DEB</text>
+
+  <rect class="card" x="850" y="144" width="280" height="144" rx="16"/>
+  <rect class="pill" x="878" y="172" width="78" height="28" rx="14"/>
+  <text class="pillText" x="901" y="191">Step 3</text>
+  <text class="step" x="878" y="232">Launch the studio</text>
+  <text class="text" x="878" y="260">Claude Code guidance appears if setup is missing</text>
+
+  <path class="line" d="M350 216 C388 216 418 216 460 216"/>
+  <path class="line" d="M740 216 C778 216 808 216 850 216"/>
+</svg>

@@ -1,75 +1,83 @@
 # Claude Code Studio Next
 
-> A Windows-first Tauri desktop studio for Claude Code providers, identities, Skills, MCP services, project history, diagnostics, and memory-first runner control.
+> A cross-platform Tauri desktop studio for Claude Code providers, Skills, MCP services, project history, diagnostics, and memory-conscious task execution.
 
-![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
+![Claude Code Studio Next product preview](docs/assets/hero.svg)
+
+[![CI](https://github.com/Jevil961/claude-code-studio-next/actions/workflows/ci.yml/badge.svg)](https://github.com/Jevil961/claude-code-studio-next/actions/workflows/ci.yml)
+[![Release](https://github.com/Jevil961/claude-code-studio-next/actions/workflows/release.yml/badge.svg)](https://github.com/Jevil961/claude-code-studio-next/actions/workflows/release.yml)
 ![Tauri](https://img.shields.io/badge/Tauri-2.x-24C8DB)
-![Node](https://img.shields.io/badge/Node.js-18%2B-339933)
-![Status](https://img.shields.io/badge/status-0.1.0%20local%20preview-orange)
+![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933)
+![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-555)
+![Architectures](https://img.shields.io/badge/arch-x64%20%7C%20ARM64-7B61FF)
 
 ## Overview
 
-Claude Code Studio Next is a local desktop workbench for running and managing Claude Code with a lighter Tauri shell. It focuses on practical daily use: provider switching, identity-based Skills sync, MCP management, project and conversation navigation, diagnostics, usage visibility, and controlled Claude Code process lifecycles.
+Claude Code Studio Next is a local desktop workbench for people who use Claude Code heavily and want a cleaner operating surface than terminal-only workflows. It centralizes provider configuration, model presets, identity-based Skills, MCP services, project history, diagnostics, usage visibility, backups, and Claude Code runner control in one Tauri application.
 
-The app is designed for users who want the power of Claude Code without constantly seeing low-level process details or leaving unnecessary Claude/Node processes behind.
+The project is designed around two product goals:
 
-## Multilingual Summary
+- Keep the interface comfortable and focused while hiding low-level process noise.
+- Keep system load predictable by cleaning up Claude Code and backend child processes after tasks complete.
 
-### English
+## Platform Support
 
-Claude Code Studio Next is a Tauri desktop application for managing Claude Code providers, Skills, MCP services, project history, diagnostics, and memory-conscious runner behavior on Windows.
+| Operating system | CPU architecture | Distribution status |
+| --- | --- | --- |
+| Windows 10/11 | x64, ARM64 | Local Windows x64 build is validated. GitHub Actions is configured for Windows release packaging. |
+| macOS | Apple Silicon ARM64, Intel x64 | GitHub Actions release workflow builds macOS artifacts on native macOS runners. |
+| Linux | x64, ARM64-ready source | Linux packaging is configured for AppImage and Debian packages; ARM64 can be built from source or runner infrastructure. |
 
-### 中文
+The current local artifact in this repository is the Windows build. Cross-platform artifacts are intentionally produced by GitHub Actions so macOS and Linux packages are built on native systems instead of on the maintainer's Windows machine.
 
-Claude Code Studio Next 是一个面向 Windows 的 Tauri 桌面工作台，用于管理 Claude Code 的 Provider、身份、Skills、MCP 服务、项目历史、诊断信息和低内存运行策略。
+## Installation
 
-### Français
+![Installation flow](docs/assets/install-flow.svg)
 
-Claude Code Studio Next est une application de bureau Tauri pour Windows permettant de gérer les fournisseurs Claude Code, les Skills, les services MCP, l'historique des projets, les diagnostics et l'exécution à faible consommation mémoire.
+Download the latest release from [GitHub Releases](https://github.com/Jevil961/claude-code-studio-next/releases).
 
-### Español
+| Platform | Recommended package | Notes |
+| --- | --- | --- |
+| Windows | `Claude Code Studio Next_*_x64-setup.exe` | Standard installer. The app opens without a visible command window. |
+| Windows portable | `Claude-Code-Studio-Next-portable.zip` | Unzip and run `Claude Code Studio Next.exe`. Useful when you do not want an installer. |
+| macOS | `.dmg` | Open the disk image, drag the app into Applications, then launch it. |
+| Linux | `.AppImage` or `.deb` | Use AppImage for portable use or Debian package for system installation. |
 
-Claude Code Studio Next es una aplicación de escritorio basada en Tauri para Windows que permite gestionar proveedores de Claude Code, Skills, servicios MCP, historial de proyectos, diagnósticos y ejecución optimizada para memoria.
+Runtime prerequisite:
 
-### Русский
+- Node.js 18 or newer must be available in `PATH`.
+- Claude Code should be installed, or the app will show setup guidance.
+- Rust is required only for development and release builds, not for normal end users.
 
-Claude Code Studio Next - это настольное приложение на Tauri для Windows, предназначенное для управления провайдерами Claude Code, Skills, службами MCP, историей проектов, диагностикой и режимом запуска с экономией памяти.
+## Features
 
-### العربية
-
-Claude Code Studio Next هو تطبيق سطح مكتب مبني على Tauri لنظام Windows لإدارة مزودي Claude Code والمهارات وخدمات MCP وسجل المشاريع والتشخيصات وتشغيل المهام مع تقليل استهلاك الذاكرة.
-
-## Highlights
-
-- Tauri desktop shell with a hidden Node backend.
-- Provider management and model preset support.
+- Provider and model preset management.
 - Identity-based Skills organization and sync.
 - MCP service management.
 - Claude Code project and conversation navigation.
-- Memory-first runner mode: Claude tasks exit when complete by default.
-- Process cleanup for Claude and backend child processes.
+- Memory-first runner behavior: Claude Code exits when a task finishes by default.
+- Cleanup for Claude Code, backend child processes, and stale runtime state.
 - Usage statistics with cache to avoid repeated JSONL scans.
-- Diagnostics export with runtime, paths, processes, counts, and performance budgets.
+- Diagnostics export with runtime paths, versions, process counts, recent errors, and performance budget signals.
 - Automatic backups before destructive Claude settings or Skills writes.
-- Release scripts for release exe, NSIS installer, portable package, and release checks.
+- Tauri-first desktop packaging with a hidden Node backend.
 
-## Runtime Requirements
+## Architecture
 
-- Windows 10/11.
-- Node.js 18+ available in `PATH`.
-- Claude Code installed globally or installable through npm.
-- Rust is required only for development and release builds.
+![Runtime architecture](docs/assets/architecture.svg)
 
-For details, see [Runtime Strategy](docs/RUNTIME.md).
+Tauri owns the desktop window, native commands, packaging, and application lifecycle. A hidden Node backend owns database access, provider/Skills/MCP operations, session indexing, diagnostics, and Claude Code task orchestration. Claude Code itself is launched only while work is active, then the app attempts to close related processes cleanly.
 
-## Quick Start
+This keeps the current product stable while leaving a clear future path toward either a bundled Node runtime or a deeper Rust backend.
+
+## Developer Setup
 
 ```powershell
 npm install
 npm run dev
 ```
 
-## Verification
+Useful checks:
 
 ```powershell
 npm run check
@@ -77,29 +85,11 @@ npm test
 cargo check --manifest-path src-tauri\Cargo.toml
 ```
 
-## Build
-
-Debug executable:
-
-```powershell
-npm run build:debug
-```
-
-Release executable:
+Windows release commands:
 
 ```powershell
 npm run build:exe
-```
-
-NSIS installer:
-
-```powershell
 npm run build
-```
-
-Portable package:
-
-```powershell
 npm run build:portable
 ```
 
@@ -111,29 +101,23 @@ npm run release:check
 
 ## Release Outputs
 
-- Debug exe: `src-tauri/target/debug/claude-code-studio-next.exe`
-- Release exe: `src-tauri/target/release/claude-code-studio-next.exe`
-- NSIS installer: `src-tauri/target/release/bundle/nsis/`
-- Portable zip: `dist-tauri/Claude-Code-Studio-Next-portable.zip`
+Generated binaries should not be committed to Git. Upload them to GitHub Releases.
 
-Generated binaries are not meant to be committed. Upload them to GitHub Releases instead.
-
-## Repository Map
-
-| Path | Purpose |
+| Artifact | Path |
 | --- | --- |
-| `public/` | Frontend HTML, CSS, and browser-side JavaScript. |
-| `src-tauri/` | Tauri Rust shell, native commands, config, icons, and capabilities. |
-| `src/` | Hidden Node backend, data modules, diagnostics, setup, and runner logic. |
-| `src/db/` | Providers, Skills, MCP, backup, session index, and SQL.js access. |
-| `src/runner/` | Claude Code process arguments, streaming, lifecycle, and cleanup. |
-| `scripts/` | Release check and portable packaging scripts. |
-| `test/` | Node test suite. |
-| `docs/` | Product, runtime, release, performance, and GitHub submission documentation. |
-| `.github/` | Issue templates and pull request template. |
+| Windows release exe | `src-tauri/target/release/claude-code-studio-next.exe` |
+| Windows NSIS installer | `src-tauri/target/release/bundle/nsis/` |
+| Windows portable zip | `dist-tauri/Claude-Code-Studio-Next-portable.zip` |
+| GitHub Actions artifacts | Uploaded automatically by `.github/workflows/release.yml` on `v*` tags |
 
 ## Documentation
 
+- [English full article](docs/i18n/README.en.md)
+- [中文完整介绍](docs/i18n/README.zh-CN.md)
+- [Article complet en français](docs/i18n/README.fr.md)
+- [Artículo completo en español](docs/i18n/README.es.md)
+- [Полное описание на русском](docs/i18n/README.ru.md)
+- [المقال الكامل بالعربية](docs/i18n/README.ar.md)
 - [What to Upload to GitHub](docs/UPLOAD_TO_GITHUB.md)
 - [Project Structure](docs/PROJECT_STRUCTURE.md)
 - [Product Review](docs/PRODUCT_REVIEW.md)
@@ -141,23 +125,17 @@ Generated binaries are not meant to be committed. Upload them to GitHub Releases
 - [Performance Budget](docs/PERFORMANCE_BUDGET.md)
 - [Release Checklist](docs/RELEASE_CHECKLIST.md)
 - [GitHub Submission Guide](docs/GITHUB_SUBMISSION.md)
-- [Changelog](CHANGELOG.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security](SECURITY.md)
 
-## Current Product Status
+## Repository Status
 
-This project is ready to be submitted to GitHub as a `0.1.0` Windows local preview.
+This repository is ready for GitHub publication as `0.1.0`.
 
-It is not yet positioned as a broad public consumer release because:
+Important current decisions:
 
-- Node.js is still a documented prerequisite.
-- The app is not code-signed.
-- Auto-update is not enabled.
-
-## Framework Boundary
-
-The repository is Tauri-first. Older desktop-shell entrypoints and packaging scripts were removed to keep the release path unambiguous.
+- Node.js remains a documented prerequisite.
+- Release binaries live in GitHub Releases, not in the repository tree.
+- Code signing and automatic updates are not enabled yet.
+- The desktop framework boundary is Tauri-first; older desktop-shell paths have been removed.
 
 ## License
 

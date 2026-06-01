@@ -1,0 +1,29 @@
+<svg width="1280" height="640" viewBox="0 0 1280 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1280" height="640" rx="32" fill="#0D1117"/>
+  <rect x="44" y="44" width="1192" height="552" rx="24" fill="#111827" stroke="#263244"/>
+  <rect x="78" y="86" width="250" height="468" rx="18" fill="#0B1220" stroke="#243044"/>
+  <rect x="352" y="86" width="576" height="468" rx="18" fill="#0F172A" stroke="#2A3650"/>
+  <rect x="952" y="86" width="250" height="468" rx="18" fill="#0B1220" stroke="#243044"/>
+  <text x="96" y="128" fill="#E5E7EB" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="700">Projects</text>
+  <rect x="96" y="158" width="196" height="44" rx="10" fill="#1F2937"/>
+  <rect x="96" y="218" width="196" height="44" rx="10" fill="#111827" stroke="#374151"/>
+  <rect x="96" y="278" width="196" height="44" rx="10" fill="#111827" stroke="#374151"/>
+  <text x="386" y="132" fill="#F9FAFB" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="800">Claude Code Studio Next</text>
+  <text x="386" y="170" fill="#9CA3AF" font-family="Segoe UI, Arial, sans-serif" font-size="18">Tauri desktop studio for providers, Skills, MCP, history, and diagnostics.</text>
+  <rect x="386" y="218" width="508" height="70" rx="14" fill="#172033" stroke="#334155"/>
+  <text x="414" y="260" fill="#D1D5DB" font-family="Segoe UI, Arial, sans-serif" font-size="18">Memory-first Claude runner</text>
+  <circle cx="858" cy="253" r="10" fill="#22C55E"/>
+  <rect x="386" y="316" width="508" height="70" rx="14" fill="#172033" stroke="#334155"/>
+  <text x="414" y="358" fill="#D1D5DB" font-family="Segoe UI, Arial, sans-serif" font-size="18">Identity-based Skills sync</text>
+  <circle cx="858" cy="351" r="10" fill="#38BDF8"/>
+  <rect x="386" y="414" width="508" height="70" rx="14" fill="#172033" stroke="#334155"/>
+  <text x="414" y="456" fill="#D1D5DB" font-family="Segoe UI, Arial, sans-serif" font-size="18">Diagnostics and release-ready packaging</text>
+  <circle cx="858" cy="449" r="10" fill="#F59E0B"/>
+  <text x="978" y="128" fill="#E5E7EB" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="700">Runtime</text>
+  <text x="978" y="180" fill="#A7F3D0" font-family="Segoe UI, Arial, sans-serif" font-size="18">Windows</text>
+  <text x="978" y="226" fill="#BFDBFE" font-family="Segoe UI, Arial, sans-serif" font-size="18">macOS</text>
+  <text x="978" y="272" fill="#FDE68A" font-family="Segoe UI, Arial, sans-serif" font-size="18">Linux</text>
+  <text x="978" y="338" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="16">x64 / ARM64 builds</text>
+  <text x="978" y="380" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="16">Node backend bridge</text>
+  <text x="978" y="422" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="16">Tauri native shell</text>
+</svg>

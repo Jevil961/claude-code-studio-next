@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            command: npm run tauri -- build --target x86_64-pc-windows-msvc --bundles nsis
+            rustTarget: x86_64-pc-windows-msvc
+          - name: windows-arm64
+            os: windows-latest
+            command: npm run tauri -- build --target aarch64-pc-windows-msvc --bundles nsis
+            rustTarget: aarch64-pc-windows-msvc
+          - name: macos-x64
+            os: macos-13
+            command: npm run tauri -- build --target x86_64-apple-darwin --bundles dmg,app
+            rustTarget: x86_64-apple-darwin
+          - name: macos-arm64
+            os: macos-14
+            command: npm run tauri -- build --target aarch64-apple-darwin --bundles dmg,app
+            rustTarget: aarch64-apple-darwin
+          - name: linux-x64
+            os: ubuntu-22.04
+            command: npm run tauri -- build --target x86_64-unknown-linux-gnu --bundles appimage,deb
+            rustTarget: x86_64-unknown-linux-gnu
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rustTarget }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build native package
+        run: ${{ matrix.command }}
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-code-studio-next-${{ matrix.name }}
+          path: |
+            src-tauri/target/**/bundle/**/*.exe
+            src-tauri/target/**/bundle/**/*.msi
+            src-tauri/target/**/bundle/**/*.dmg
+            src-tauri/target/**/bundle/**/*.app
+            src-tauri/target/**/bundle/**/*.AppImage
+            src-tauri/target/**/bundle/**/*.deb
+          if-no-files-found: error
+
+      - name: Publish GitHub Release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            src-tauri/target/**/bundle/**/*.exe
+            src-tauri/target/**/bundle/**/*.msi
+            src-tauri/target/**/bundle/**/*.dmg
+            src-tauri/target/**/bundle/**/*.AppImage
+            src-tauri/target/**/bundle/**/*.deb
