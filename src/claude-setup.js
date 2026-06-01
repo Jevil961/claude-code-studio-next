@@ -32,6 +32,9 @@ function writeConfig(config) {
 }
 
 function which(name) {
+  for (const candidate of executableCandidates(name)) {
+    if (candidate && existsSync(candidate)) return candidate;
+  }
   const names = isWindows ? [`${name}.cmd`, `${name}.exe`, name] : [name];
   for (const n of names) {
     try {
@@ -43,6 +46,72 @@ function which(name) {
     } catch {}
   }
   return "";
+}
+
+function executableCandidates(name) {
+  if (!isWindows) return [];
+  const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
+  const localAppData = process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local");
+  const programFiles = process.env.ProgramFiles || "C:\\Program Files";
+  const programFilesX86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+  const localBin = join(homedir(), ".local", "bin");
+  const roamingNpm = join(appData, "npm");
+  const nodeRoots = [
+    join(programFiles, "nodejs"),
+    join(programFilesX86, "nodejs"),
+    join(localAppData, "Programs", "nodejs"),
+    ...driveNodeRoots(),
+  ];
+  const candidates = [];
+  if (name === "node") {
+    for (const root of nodeRoots) candidates.push(join(root, "node.exe"));
+  } else if (name === "npm") {
+    candidates.push(join(roamingNpm, "npm.cmd"), join(roamingNpm, "npm.exe"));
+    for (const root of nodeRoots) candidates.push(join(root, "npm.cmd"), join(root, "npm.exe"));
+  } else if (name === "claude") {
+    candidates.push(
+      join(localBin, "claude.exe"),
+      join(localBin, "claude.cmd"),
+      join(roamingNpm, "claude.cmd"),
+      join(roamingNpm, "claude.exe"),
+    );
+  }
+  return candidates;
+}
+
+function driveNodeRoots() {
+  if (!isWindows) return [];
+  const roots = [];
+  for (let code = 67; code <= 90; code++) {
+    roots.push(`${String.fromCharCode(code)}:\\Nodejs`);
+    roots.push(`${String.fromCharCode(code)}:\\nodejs`);
+    roots.push(`${String.fromCharCode(code)}:\\Node`);
+    roots.push(`${String.fromCharCode(code)}:\\node`);
+  }
+  return roots;
+}
+
+function toolPathDirs() {
+  if (!isWindows) return [];
+  const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
+  const localAppData = process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local");
+  const programFiles = process.env.ProgramFiles || "C:\\Program Files";
+  const programFilesX86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+  return [
+    join(appData, "npm"),
+    join(localAppData, "Programs", "nodejs"),
+    join(programFiles, "nodejs"),
+    join(programFilesX86, "nodejs"),
+    ...driveNodeRoots(),
+    join(homedir(), ".local", "bin"),
+  ].filter(p => existsSync(p));
+}
+
+function toolEnv() {
+  if (!isWindows) return { ...process.env };
+  const sep = ";";
+  const extra = toolPathDirs();
+  return { ...process.env, Path: [...extra, process.env.Path || process.env.PATH || ""].filter(Boolean).join(sep) };
 }
 
 function findNodeSync() { return which("node"); }
@@ -78,7 +147,7 @@ function findClaudeSync() {
 function getClaudeVersion(claudePath) {
   try {
     const out = execFileSync(claudePath || "claude", ["--version"], {
-      windowsHide: true, timeout: 5000, encoding: "utf8", env: { ...process.env },
+      windowsHide: true, timeout: 5000, encoding: "utf8", env: toolEnv(),
     });
     const m = String(out).match(/(\d+\.\d+\.\d+)/);
     return m ? m[1] : "";
@@ -320,8 +389,9 @@ export function installNode(version) {
 export async function fetchVersions() {
   return new Promise(resolve => {
     const npm = findNpmSync();
+    if (!npm) return resolve({ ok: false, error: "npm not found" });
     const child = spawn(npm, ["view", PKG, "versions", "--json"], {
-      windowsHide: true, timeout: 15000, env: { ...process.env },
+      windowsHide: true, timeout: 15000, env: toolEnv(),
     });
     let out = "", err = "";
     child.stdout.on("data", c => { out += String(c); });
@@ -346,11 +416,12 @@ export async function fetchVersions() {
 
 export function installClaude(version) {
   const npm = findNpmSync();
+  if (!npm) return { ok: false, error: "npm not found" };
   const pkgSpec = version ? `${PKG}@${version}` : PKG;
   const args = ["install", "-g", pkgSpec];
 
   const child = spawn(npm, args, {
-    windowsHide: true, env: { ...process.env },
+    windowsHide: true, env: toolEnv(),
   });
 
   const installId = `${Date.now()}`;

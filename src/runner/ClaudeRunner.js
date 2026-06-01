@@ -34,10 +34,45 @@ function writeCache(path) {
 
 function execFileText(cmd, args = [], opts = {}) {
   return new Promise(r => {
-    execFile(cmd, args, { windowsHide: true, timeout: 6000, env: { ...process.env }, ...opts }, (e, so, se) => {
+    execFile(cmd, args, { windowsHide: true, timeout: 6000, env: toolEnv(), ...opts }, (e, so, se) => {
       r({ ok: !e, stdout: String(so || "").trim(), stderr: String(se || "").trim(), error: e?.message || "" });
     });
   });
+}
+
+function toolPathDirs() {
+  if (!isWindows) return [];
+  const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
+  const localAppData = process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local");
+  const programFiles = process.env.ProgramFiles || "C:\\Program Files";
+  const programFilesX86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+  return [
+    join(appData, "npm"),
+    join(localAppData, "Programs", "nodejs"),
+    join(programFiles, "nodejs"),
+    join(programFilesX86, "nodejs"),
+    ...driveNodeRoots(),
+    join(homedir(), ".local", "bin"),
+  ].filter(p => existsSync(p));
+}
+
+function driveNodeRoots() {
+  if (!isWindows) return [];
+  const roots = [];
+  for (let code = 67; code <= 90; code++) {
+    roots.push(`${String.fromCharCode(code)}:\\Nodejs`);
+    roots.push(`${String.fromCharCode(code)}:\\nodejs`);
+    roots.push(`${String.fromCharCode(code)}:\\Node`);
+    roots.push(`${String.fromCharCode(code)}:\\node`);
+  }
+  return roots;
+}
+
+function toolEnv(extra = {}) {
+  if (!isWindows) return { ...process.env, ...extra };
+  const sep = ";";
+  const path = [...toolPathDirs(), process.env.Path || process.env.PATH || ""].filter(Boolean).join(sep);
+  return { ...process.env, Path: path, PATH: path, ...extra };
 }
 
 async function whereAll(name) {
@@ -204,7 +239,7 @@ class Runner {
     this.finished = false;
     const cwd = resolveCwd(this.payload.cwd);
     this.payload.effectiveCwd = cwd;
-    const opts = { cwd, env: { ...process.env, ComSpec: process.env.ComSpec || join(process.env.SystemRoot || "C:\\Windows", "System32", "cmd.exe") }, windowsHide: true };
+    const opts = { cwd, env: toolEnv({ ComSpec: process.env.ComSpec || join(process.env.SystemRoot || "C:\\Windows", "System32", "cmd.exe") }), windowsHide: true };
     if (isWindows && !/\.(exe|com)$/i.test(cmd)) opts.shell = true;
     this.child = spawn(cmd, args, opts);
     this.status = "starting";
@@ -398,7 +433,7 @@ export function stopByKey(key) { const r = runners.get(key); if (!r) return { ok
 export function spawnOnce({ runId, prompt, cwd, claudePath, mode, permissionMode, sessionId, extraArgs }) {
   const cmd = claudePath || "claude";
   const args = buildArgs({ prompt, mode, permissionMode, sessionId, extraArgs, persistent: false });
-  const child = spawn(cmd, args, { cwd: resolveCwd(cwd), env: { ...process.env }, windowsHide: true });
+  const child = spawn(cmd, args, { cwd: resolveCwd(cwd), env: toolEnv(), windowsHide: true });
   activeRuns.set(runId, child);
   let stdoutBuf = "", stderrBuf = "";
   let finished = false;

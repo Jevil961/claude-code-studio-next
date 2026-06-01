@@ -3,8 +3,9 @@
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
+    env,
     io::{BufRead, BufReader, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -99,6 +100,52 @@ fn node_binary(app: &tauri::AppHandle, root: &PathBuf) -> String {
     "node".to_string()
 }
 
+#[cfg(target_os = "windows")]
+fn append_path_candidate(paths: &mut Vec<PathBuf>, path: impl AsRef<Path>) {
+    let path = path.as_ref().to_path_buf();
+    let normalized = path.to_string_lossy().to_lowercase();
+    if path.exists() && !paths.iter().any(|existing| existing.to_string_lossy().to_lowercase() == normalized) {
+        paths.push(path);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn augment_backend_path(command: &mut Command) {
+    let mut paths: Vec<PathBuf> = env::var_os("PATH")
+        .map(|value| env::split_paths(&value).collect())
+        .unwrap_or_default();
+
+    if let Some(appdata) = env::var_os("APPDATA") {
+        append_path_candidate(&mut paths, PathBuf::from(appdata).join("npm"));
+    }
+    if let Some(localappdata) = env::var_os("LOCALAPPDATA") {
+        append_path_candidate(&mut paths, PathBuf::from(localappdata).join("Programs").join("nodejs"));
+    }
+    if let Some(userprofile) = env::var_os("USERPROFILE") {
+        append_path_candidate(&mut paths, PathBuf::from(userprofile).join(".local").join("bin"));
+    }
+    if let Some(program_files) = env::var_os("ProgramFiles") {
+        append_path_candidate(&mut paths, PathBuf::from(program_files).join("nodejs"));
+    }
+    if let Some(program_files_x86) = env::var_os("ProgramFiles(x86)") {
+        append_path_candidate(&mut paths, PathBuf::from(program_files_x86).join("nodejs"));
+    }
+    for drive in b'C'..=b'Z' {
+        let letter = drive as char;
+        append_path_candidate(&mut paths, PathBuf::from(format!("{letter}:\\Nodejs")));
+        append_path_candidate(&mut paths, PathBuf::from(format!("{letter}:\\nodejs")));
+        append_path_candidate(&mut paths, PathBuf::from(format!("{letter}:\\Node")));
+        append_path_candidate(&mut paths, PathBuf::from(format!("{letter}:\\node")));
+    }
+
+    if let Ok(joined) = env::join_paths(paths) {
+        command.env("PATH", joined);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn augment_backend_path(_command: &mut Command) {}
+
 fn spawn_backend(app: &tauri::AppHandle) -> Result<BackendState, String> {
     let root = backend_root(app);
     let script = root.join("src").join("backend-host.mjs");
@@ -110,6 +157,7 @@ fn spawn_backend(app: &tauri::AppHandle) -> Result<BackendState, String> {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    augment_backend_path(&mut command);
     #[cfg(target_os = "windows")]
     command.creation_flags(0x08000000);
 
