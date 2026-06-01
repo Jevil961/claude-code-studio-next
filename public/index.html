@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="zh-CN" class="tdesign-dark">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Claude Code Studio</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="toast-box" id="toastBox"></div>
+
+    <!-- Claude Setup Banner -->
+    <div class="version-banner is-hidden" id="setupBanner">
+      <div class="version-banner-body">
+        <span class="version-banner-icon" id="setupBannerIcon">📦</span>
+        <div style="flex:1;">
+          <b id="setupBannerTitle">未检测到 Claude Code</b>
+          <span id="setupBannerMsg">正在获取可用版本...</span>
+        </div>
+      </div>
+      <div class="version-banner-actions" id="setupBannerActions">
+        <select id="setupNodeVersionSelect" style="display:none;padding:4px 8px;border-radius:4px;background:var(--td-bg-color-container);color:var(--td-text-color-primary);border:1px solid var(--td-border-level-1-color);font-size:12px;"></select>
+        <select id="setupVersionSelect" style="padding:4px 8px;border-radius:4px;background:var(--td-bg-color-container);color:var(--td-text-color-primary);border:1px solid var(--td-border-level-1-color);font-size:12px;"></select>
+        <button class="st-btn t-btn--primary t-btn--sm" id="setupBannerInstall">一键安装</button>
+        <button class="st-btn t-btn--link t-btn--sm" id="setupBannerDismiss">不再提示</button>
+      </div>
+    </div>
+
+    <!-- Top Bar -->
+    <header class="topbar">
+      <button class="topbar-btn" id="sidebarToggle" type="button" title="侧边栏">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M6 2v12" stroke="currentColor" stroke-width="1.5"/></svg>
+      </button>
+      <button class="topbar-btn" id="contextToggle" type="button" title="折叠右侧栏">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M10 2v12" stroke="currentColor" stroke-width="1.5"/></svg>
+      </button>
+      <button class="topbar-brand" id="brandMenuBtn" type="button" title="菜单">
+        <svg class="logo-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <defs><linearGradient id="logoGrad" x1="2" y1="2" x2="18" y2="18"><stop stop-color="#4582ff"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></defs>
+          <circle cx="10" cy="10" r="9" stroke="url(#logoGrad)" stroke-width="1.6"/>
+          <path d="M12.5 7c-1-1-2.5-1.5-4-1.5C5.5 5.5 3.5 7.5 3.5 10s2 4.5 5 4.5c1.5 0 3-.5 4-1.5" stroke="url(#logoGrad)" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        <span class="logo-text">Claude Code Studio</span>
+        <svg class="brand-chevron" width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="float-dropdown" id="brandDropdown" style="min-width:160px;">
+        <button class="model-option" data-tab="providers" type="button">Provider 管理</button>
+        <button class="model-option" data-tab="identities" type="button">身份与协作</button>
+        <button class="model-option" data-tab="skills" type="button">Skills 管理</button>
+        <button class="model-option" data-tab="mcp" type="button">MCP 服务</button>
+        <button class="model-option" data-tab="plugins" type="button">插件</button>
+        <div style="height:1px;background:var(--td-border-level-2-color);margin:3px 6px;"></div>
+        <button class="model-option" data-tab="usage" type="button">用量统计</button>
+        <button class="model-option" data-tab="diagnostics" type="button">诊断</button>
+        <button class="model-option" data-tab="general" type="button">通用设置</button>
+      </div>
+      <div class="topbar-actions">
+        <button class="topbar-act" id="newChatBtn" type="button" title="新对话">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="2.5" width="11" height="9" rx="2.5" stroke="currentColor" stroke-width="1.3"/><path d="M6 10l-2 3h8l-2-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 4.5v3M6.5 6h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          <span>新对话</span>
+        </button>
+        <button class="topbar-act" id="searchBtn" type="button" title="搜索">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.3"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          <span>搜索</span>
+        </button>
+        <button class="topbar-act" id="pluginsBtn" type="button" title="插件">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 2h4v3a1 1 0 001 1h3v4h-3a1 1 0 00-1 1v3H6v-3a1 1 0 00-1-1H2V6h3a1 1 0 001-1V2z" stroke="currentColor" stroke-width="1.3"/></svg>
+          <span>插件</span>
+        </button>
+        <button class="topbar-act" id="teamsBtn" type="button" title="身份与协作">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="5" cy="4" r="2" stroke="currentColor" stroke-width="1.3"/><circle cx="11" cy="4" r="2" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="11" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M5.8 5.8l2 4.4M10.2 5.8l-2 4.4" stroke="currentColor" stroke-width="1.3"/></svg>
+          <span>协作</span>
+        </button>
+      </div>
+      <div class="window-actions">
+        <button class="topbar-btn win-btn" id="winMinimize" type="button" title="最小化">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 8h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+        <button class="topbar-btn win-btn" id="winMaximize" type="button" title="最大化">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="4.5" y="4.5" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.4"/></svg>
+        </button>
+        <button class="topbar-btn win-btn win-btn-close" id="winClose" type="button" title="关闭">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M5 5l6 6M11 5l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="shell">
+      <!-- Sidebar -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-head">
+          <span class="sidebar-title">项目</span>
+          <div style="display:flex;gap:2px;">
+            <button class="head-btn" id="addFolderBtn" type="button" title="添加目录">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="conv-list" id="projectList" style="max-height:35%;"></div>
+        <div class="sidebar-head" style="border-top:1px solid var(--td-border-level-2-color);">
+          <span class="sidebar-title">对话</span>
+          <button class="head-btn" id="newChatBtn2" type="button" title="新对话">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="conv-list" id="convList" style="flex:1;"></div>
+        <div class="sidebar-foot">
+          <div class="foot-info" id="providerInfo">未连接</div>
+          <div class="foot-info" id="identityInfo">--</div>
+        </div>
+      </aside>
+
+      <!-- Main Chat -->
+      <main class="main">
+        <div class="transcript" id="transcript"></div>
+
+        <form class="composer-wrap" id="composer">
+          <div class="plan-bar is-hidden" id="planBar">
+            <span>计划已生成</span>
+            <button id="approvePlanBtn" type="button">执行</button>
+            <button id="revisePlanBtn" type="button">修改</button>
+            <button id="cancelPlanBtn" type="button">取消</button>
+          </div>
+          <div class="composer">
+            <div class="composer-top">
+              <textarea id="promptInput" rows="1" placeholder="输入任务..."></textarea>
+              <div class="attachment-tray" id="attachmentTray"></div>
+            </div>
+            <div class="composer-foot">
+              <div class="cfoot-left">
+                <div class="add-menu-wrap">
+                  <button class="add-btn" id="addBtn" type="button" title="添加">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                  </button>
+                  <div class="add-menu" id="addMenu">
+                    <div class="add-menu-item" data-sub="identities">
+                      <span class="ami-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.2"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" stroke-width="1.2"/></svg></span>
+                      <span class="ami-label">身份</span>
+                      <span class="ami-arrow">›</span>
+                      <div class="add-submenu" id="subIdentities"></div>
+                    </div>
+                    <div class="add-menu-item" data-sub="context">
+                      <span class="ami-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 3h10v10H3z" stroke="currentColor" stroke-width="1.2"/><path d="M6 3v10M3 6h10" stroke="currentColor" stroke-width="1.2"/></svg></span>
+                      <span class="ami-label">上下文</span>
+                      <span class="ami-arrow">›</span>
+                      <div class="add-submenu" id="subContext">
+                        <button class="add-sub-item" data-action="addFolder" type="button">添加目录</button>
+                        <button class="add-sub-item" data-action="addFile" type="button">添加文件</button>
+                      </div>
+                    </div>
+                    <div class="add-menu-item" data-sub="tools">
+                      <span class="ami-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M10 2l4 4-8 8H2v-4l8-8z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg></span>
+                      <span class="ami-label">工具</span>
+                      <span class="ami-arrow">›</span>
+                      <div class="add-submenu" id="subTools">
+                        <button class="add-sub-item" data-action="openSkills" type="button">Skills 管理</button>
+                        <button class="add-sub-item" data-action="openMcp" type="button">MCP 服务</button>
+                        <button class="add-sub-item" data-action="syncSkills" type="button">同步到 Claude</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <button class="cfoot-btn" id="permBtn" type="button">Auto ▾</button>
+                <span class="mode-pill" id="modePill">Auto</span>
+              </div>
+              <div class="cfoot-right">
+                <span class="cfoot-pill" id="runnerPill">未连接</span>
+                <button class="model-btn" id="modelBtn" type="button">
+                  <span id="modelLabel">未设置</span>
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+                <button class="run-stop-btn is-send" id="runStopBtn" type="submit" title="发送">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2v12M3 7l5-5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+
+        <footer class="statusbar">
+          <span id="cwdState">未选择项目</span>
+          <span id="branchState"></span>
+        </footer>
+      </main>
+
+      <aside class="context-stack" id="contextStack">
+        <section class="ctx-section">
+          <div class="ctx-head">
+            <span>上下文</span>
+            <button class="ctx-icon-btn" id="refreshIndexBtn" type="button" title="刷新项目索引">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M13 5a5 5 0 10.9 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M13 2v3h-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+          <div class="ctx-kv" id="contextOverview"></div>
+        </section>
+
+        <section class="ctx-section ctx-section-grow">
+          <div class="ctx-head">
+            <span>运行时间线</span>
+            <span class="ctx-subtle" id="timelineCount">0</span>
+          </div>
+          <div class="run-timeline" id="runTimeline"></div>
+        </section>
+
+        <section class="ctx-section">
+          <div class="ctx-head">
+            <span>材料与变更</span>
+            <span class="ctx-subtle" id="artifactCount">0</span>
+          </div>
+          <div class="artifact-list" id="artifactList"></div>
+        </section>
+      </aside>
+    </div>
+
+    <!-- Floating dropdowns (outside composer to avoid clipping) -->
+    <div class="float-dropdown" id="modelDropdown" style="min-width:180px;max-width:240px;">
+      <div id="modelDropdownBody"></div>
+    </div>
+    <div class="float-dropdown" id="permDropdown" style="min-width:150px;">
+      <button class="perm-option is-active" data-mode="auto" type="button">
+        <span class="perm-option-name">Auto</span>
+        <span class="perm-option-desc">低风险自动，高风险需确认</span>
+      </button>
+      <button class="perm-option" data-mode="plan" type="button">
+        <span class="perm-option-name">Plan</span>
+        <span class="perm-option-desc">只生成计划，不执行</span>
+      </button>
+      <button class="perm-option" data-mode="bypass" type="button">
+        <span class="perm-option-name">Bypass</span>
+        <span class="perm-option-desc">跳过所有确认</span>
+      </button>
+    </div>
+
+    <div class="search-panel" id="searchPanel">
+      <div class="search-head">
+        <input id="globalSearchInput" type="search" placeholder="搜索项目、对话、消息、插件、记忆关键词">
+        <button class="topbar-btn" id="searchCloseBtn" type="button" title="关闭">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M5 5l6 6M11 5l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="search-results" id="searchResults"></div>
+    </div>
+
+    <!-- Settings Page -->
+    <div class="settings-page" id="settingsPage">
+      <div class="settings-head">
+        <button class="settings-back" id="settingsBack" type="button">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <span class="settings-title" id="settingsTitle">设置</span>
+      </div>
+      <div class="settings-tabs" id="settingsTabs">
+        <button class="stab is-active" data-tab="providers" type="button">Provider</button>
+        <button class="stab" data-tab="identities" type="button">身份</button>
+        <button class="stab" data-tab="skills" type="button">Skills</button>
+        <button class="stab" data-tab="mcp" type="button">MCP</button>
+        <button class="stab" data-tab="plugins" type="button">插件</button>
+        <button class="stab" data-tab="runners" type="button">Runner</button>
+        <button class="stab" data-tab="usage" type="button">用量</button>
+        <button class="stab" data-tab="diagnostics" type="button">诊断</button>
+        <button class="stab" data-tab="general" type="button">通用</button>
+      </div>
+      <div class="settings-body" id="settingsBody"></div>
+    </div>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal-box" id="modalBox">
+        <div class="modal-title" id="modalTitle"></div>
+        <div class="modal-fields" id="modalFields"></div>
+        <div class="modal-foot">
+          <button class="t-btn t-btn--default" id="modalCancel" type="button">取消</button>
+          <button class="t-btn t-btn--primary" id="modalOk" type="button">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div class="float-dropdown" id="ctxMenu" style="min-width:120px;"></div>
+
+    <!-- Confirm -->
+    <div class="modal-overlay" id="confirmOverlay">
+      <div class="modal-box">
+        <div class="modal-title" id="confirmTitle"></div>
+        <div class="modal-msg" id="confirmMsg"></div>
+        <div class="modal-foot">
+          <button class="t-btn t-btn--default" id="confirmCancel" type="button">取消</button>
+          <button class="t-btn t-btn--primary" id="confirmOk" type="button">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ask User (auto mode permission) -->
+    <div class="modal-overlay" id="askOverlay">
+      <div class="modal-box">
+        <div class="modal-title" id="askTitle">需要确认</div>
+        <div class="ask-questions" id="askQuestions"></div>
+      </div>
+    </div>
+
+    <!-- Templates -->
+    <template id="tplConv">
+      <button class="conv-item" type="button">
+        <div class="conv-item-body">
+          <div class="conv-item-title"></div>
+          <div class="conv-item-time"></div>
+        </div>
+        <span class="conv-item-badge"></span>
+      </button>
+    </template>
+
+    <template id="tplMessage">
+      <article class="message">
+        <div class="msg-body">
+          <div class="msg-content"></div>
+        </div>
+      </article>
+    </template>
+
+    <script src="./tauri-bridge.js"></script>
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
