@@ -306,7 +306,7 @@ async function createPmDevQaTemplate(renderSettingsTab) {
       "所有身份必须只处理自己职责内的事情。",
       "交接给下一身份前，要给出清楚的输入、已完成内容和剩余风险。",
       "评审类身份必须在最后一行输出 DECISION: pass 或 DECISION: revise。",
-      "审核类身份必须在最后一行输出 DECISION: approve 或 DECISION: reject。",
+      "审核类身份必须按节点交接线输出对应 DECISION；本模板项目审核使用 DECISION: yes 或 DECISION: no。",
     ].join("\n"),
   });
   if (!teamResult.ok) {

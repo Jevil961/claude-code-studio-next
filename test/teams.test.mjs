@@ -166,5 +166,43 @@ test("teams support conditional review loops and final approval prompts", async 
     task: "Fix app startup",
     previousOutputs: { [approval.id]: "Approved. DECISION: yes" },
   });
-  assert.match(outputPrompt.prompt, /final approval\/output node/);
+  assert.match(outputPrompt.prompt, /final output node/);
+  assert.doesNotMatch(outputPrompt.prompt, /include DECISION: approve/);
+});
+
+test("creating teams preserves an initial workflow graph", async () => {
+  const teams = await import("../src/teams.js");
+  const team = teams.createTeam({
+    name: "Imported graph",
+    members: [{ id: "pm", name: "PM" }],
+    workflow: [
+      { id: "start", name: "Start", nodeType: "start" },
+      { id: "pm-step", name: "PM", memberId: "pm", nodeType: "intake" },
+      { id: "out", name: "Output", memberId: "pm", nodeType: "final" },
+    ],
+    workflowEdges: [
+      { from: "start", to: "pm-step", condition: "default" },
+      { from: "pm-step", to: "out", condition: "yes", label: "approved" },
+    ],
+    entryStepId: "start",
+    finalStepId: "out",
+  });
+
+  assert.equal(team.workflowEdges.length, 2);
+  assert.equal(team.entryStepId, "start");
+  assert.equal(team.finalStepId, "out");
+  assert.equal(team.workflowEdges[1].label, "approved");
+});
+
+test("appended workflow steps keep the implicit final at the latest non-final node", async () => {
+  const teams = await import("../src/teams.js");
+  const team = teams.createTeam({ name: "Append flow" });
+  const first = teams.createTeamStep(team.id, { name: "PM", nodeType: "intake" }).step;
+  const second = teams.createTeamStep(team.id, { name: "Developer", nodeType: "work" }).step;
+  const output = teams.createTeamStep(team.id, { name: "Output", nodeType: "final" }).step;
+  const afterOutput = teams.createTeamStep(team.id, { name: "Archive", nodeType: "work" }).team;
+
+  assert.equal(teams.listTeams().find(item => item.id === team.id).entryStepId, first.id);
+  assert.equal(afterOutput.finalStepId, output.id);
+  assert.notEqual(second.id, first.id);
 });

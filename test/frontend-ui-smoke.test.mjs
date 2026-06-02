@@ -288,6 +288,21 @@ test("teams settings renders user-defined members and workflow steps", async () 
   assert.match(html, /Review/);
 });
 
+test("opening the standalone teams builder refreshes teams before rendering", async () => {
+  installFakeDom();
+  const settings = await import("../public/ui/settings/index.js");
+  let loaded = false;
+
+  settings.configure({
+    async loadTeams() { loaded = true; },
+  });
+
+  await settings.openTeamsBuilder();
+
+  assert.equal(loaded, true);
+  assert.equal(settings.teamsPage.classList.contains("is-open"), true);
+});
+
 test("tauri bridge exposes teams workflow methods", () => {
   const source = fs.readFileSync("public/tauri-bridge.js", "utf8");
   const calls = [];

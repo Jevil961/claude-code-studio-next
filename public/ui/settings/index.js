@@ -28,11 +28,12 @@ export function openSettings(tab) {
   renderSettingsTab();
 }
 
-export function openTeamsBuilder() {
+export async function openTeamsBuilder() {
   settingsPage.classList.remove("is-open");
   teamsPage.classList.add("is-open");
   state.panel = "teams";
   save();
+  await deps.loadTeams?.();
   renderTeamsBuilder();
 }
 

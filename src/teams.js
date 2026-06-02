@@ -136,6 +136,9 @@ export function createTeam(input = {}) {
     rules: input.rules || "",
     members: input.members || [],
     workflow: input.workflow || [],
+    workflowEdges: input.workflowEdges,
+    entryStepId: input.entryStepId || "",
+    finalStepId: input.finalStepId || "",
     createdAt: now(),
     updatedAt: now(),
   });
@@ -203,10 +206,18 @@ export function deleteTeamMember(teamId, memberId) {
 export function createTeamStep(teamId, input = {}) {
   const store = readStore();
   const team = findTeam(store, teamId);
+  const previousLastStep = team.workflow.at(-1) || null;
+  const previousFinalStep = team.workflow.find(step => step.id === team.finalStepId) || null;
   const step = normalizeStep({ ...input, createdAt: now(), updatedAt: now() }, team.workflow.length);
   team.workflow.push(step);
   if (!team.entryStepId) team.entryStepId = step.id;
-  if (!team.finalStepId) team.finalStepId = step.id;
+  if (
+    !team.finalStepId
+    || step.nodeType === "final"
+    || (previousLastStep && team.finalStepId === previousLastStep.id && previousFinalStep?.nodeType !== "final")
+  ) {
+    team.finalStepId = step.id;
+  }
   team.updatedAt = now();
   saveStore(store);
   return { team, step };
@@ -288,6 +299,13 @@ export function composeTeamStepPrompt({ teamId, stepId, task = "", previousOutpu
   const nextLabel = nextSteps
     .map(item => `${item.step.name}${item.edge.condition && item.edge.condition !== "default" ? ` (${item.edge.condition})` : ""}`)
     .join(", ");
+  const conditionalRoutes = nextSteps.filter(item => item.edge.condition && item.edge.condition !== "default");
+  const conditionList = [...new Set(conditionalRoutes.map(item => item.edge.condition))].join(", ");
+  const finalInstruction = step.id === team.finalStepId
+    ? nextSteps.length
+      ? "This is a final review node with mapped handoff routes. Decide whether the work is ready or must be reworked, then follow the available route conditions."
+      : "This is the final output node. Produce the formal user-facing answer; do not add internal handoff notes unless they are necessary for the user."
+    : "";
   const lines = [
     `You are working as the team member: ${member?.name || "Unassigned member"}.`,
     member?.role ? `Role: ${member.role}` : "",
@@ -299,9 +317,9 @@ export function composeTeamStepPrompt({ teamId, stepId, task = "", previousOutpu
     step.decisionInstruction ? `Decision instruction:\n${step.decisionInstruction}` : "",
     task ? `User task:\n${task}` : "",
     prior ? `Previous accepted outputs:\n${prior}` : "",
-    step.id === team.finalStepId ? "This is the final approval/output node. If the result is ready for the user, produce the formal user-facing answer and include DECISION: approve. If it must be reworked, explain why and include DECISION: reject." : "",
+    finalInstruction,
     nextSteps.length ? `Available handoff routes: ${nextLabel}.` : "This is the final mapped step. Produce a final, user-facing answer when ready.",
-    nextSteps.some(item => item.edge.condition !== "default") ? "If this step is deciding a route, include a final line exactly like: DECISION: yes, DECISION: no, DECISION: pass, DECISION: revise, DECISION: approve, or DECISION: reject." : "",
+    conditionalRoutes.length ? `If this step is deciding a route, include a final line exactly like one of the available conditions: ${conditionList}. Example: DECISION: ${conditionalRoutes[0].edge.condition}.` : "",
     "Return only the useful deliverable for this step. If something is missing, state the blocker clearly.",
   ].filter(Boolean);
   return { team, step, member, nextSteps: nextSteps.map(item => item.step), nextEdges: nextSteps.map(item => item.edge), prompt: lines.join("\n\n") };
