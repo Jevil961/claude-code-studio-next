@@ -1,6 +1,12 @@
 function getBridge() { return window.agentBridge; }
 
-export function withTimeout(p, ms, fb) { return Promise.race([p, new Promise(r => setTimeout(() => r(fb), ms))]); }
+export function withTimeout(p, ms, fb) {
+  let timer;
+  const timeout = new Promise(resolve => {
+    timer = setTimeout(() => resolve(fb), ms);
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+}
 
 export function call(method, fb, ...args) {
   const bridge = getBridge();

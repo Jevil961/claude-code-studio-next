@@ -23,7 +23,7 @@ function defaults() {
     permissionMode: "auto", runnerStrategy: "strict", messages: [],
     selectedProject: "", selectedSession: "", selectedSessionPath: "",
     clientSessionKey: crypto.randomUUID(), pendingPlanPrompt: "",
-    searchTerm: "", sessionMeta: {}, priceTable: {}, defaultCwd: "",
+    searchTerm: "", sessionMeta: {}, priceTable: {}, defaultCwd: "", customProjects: [],
     density: "normal", diagnosticsLog: [], sidebarOpen: true, contextOpen: true,
   };
 }
