@@ -87,6 +87,10 @@ function identityName(identityId) {
   return data.identities.find(identity => identity.id === identityId)?.name || "未绑定 Skills 身份";
 }
 
+function effectiveTeamPermissionMode(member) {
+  return member?.permissionMode === "bypass" ? "bypass" : "auto";
+}
+
 function runState(teamId) {
   state.teamRuns ||= {};
   state.teamRuns[teamId] ||= { task: "", currentStepId: "", outputs: {}, completed: false, updatedAt: Date.now() };
@@ -148,7 +152,7 @@ async function switchMemberContext(member, deps) {
     }
   }
   if (member?.identityId) await deps.switchIdentity?.(member.identityId);
-  if (member?.permissionMode) deps.setPerm?.(member.permissionMode);
+  deps.setPerm?.(effectiveTeamPermissionMode(member));
   deps.updateFooter?.();
 }
 
@@ -318,8 +322,8 @@ async function createPmDevQaTemplate(renderSettingsTab) {
     name: "项目经理",
     icon: "PM",
     role: "把用户原始问题澄清为可执行需求，最后审核结果是否满足用户目标。",
-    rules: "先复述目标、补齐约束、拆出验收标准。最终审核时只关注是否满足用户问题。",
-    permissionMode: "plan",
+    rules: "先复述目标、补齐约束、拆出验收标准，然后交接给开发。不要请求用户批准退出 Plan mode，也不要声称自己会开始写文件。",
+    permissionMode: "auto",
   });
   const dev = await safeBridge("createTeamMember", null, teamId, {
     name: "程序开发",
@@ -333,7 +337,7 @@ async function createPmDevQaTemplate(renderSettingsTab) {
     icon: "QA",
     role: "验证开发结果，提出可执行返工意见，直到认为满足验收标准。",
     rules: "不满意时列出具体失败点和复现方式，最后输出 DECISION: revise。满意时说明通过范围，最后输出 DECISION: pass。",
-    permissionMode: "plan",
+    permissionMode: "auto",
   });
   if (!pm.ok || !dev.ok || !qa.ok) {
     toast("模板身份创建失败", "error");
@@ -353,7 +357,7 @@ async function createPmDevQaTemplate(renderSettingsTab) {
     memberId: pm.data.member.id,
     x: 280,
     y: 150,
-    instruction: "接收用户原始问题，不要求用户懂怎么分配。把问题转成清晰需求、范围、约束和验收标准，然后交给开发。",
+    instruction: "接收用户原始问题，不要求用户懂怎么分配。把问题转成清晰需求、范围、约束和验收标准，然后交给开发。不要要求用户批准退出 Plan mode，不要说自己正在写文件。",
   });
   const build = await safeBridge("createTeamStep", null, teamId, {
     name: "开发实现",
@@ -446,7 +450,6 @@ async function memberDlg(team, member, renderSettingsTab) {
     { key: "identityId", label: "Skills 身份", type: "select", value: member?.identityId || "", options: identityOptions(member?.identityId || "") },
     { key: "permissionMode", label: "权限模式", type: "select", value: member?.permissionMode || "auto", options: [
       { value: "auto", label: "Auto" },
-      { value: "plan", label: "Plan" },
       { value: "bypass", label: "Bypass" },
     ] },
   ]);

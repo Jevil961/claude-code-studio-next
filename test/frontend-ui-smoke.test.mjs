@@ -303,6 +303,26 @@ test("opening the standalone teams builder refreshes teams before rendering", as
   assert.equal(settings.teamsPage.classList.contains("is-open"), true);
 });
 
+test("PM Dev QA template does not default team members into plan mode", () => {
+  const source = fs.readFileSync("public/ui/settings/teams.js", "utf8");
+  const templateSource = source.slice(
+    source.indexOf("async function createPmDevQaTemplate"),
+    source.indexOf("async function editTeamDlg"),
+  );
+
+  assert.doesNotMatch(templateSource, /permissionMode:\s*"plan"/);
+  assert.match(templateSource, /permissionMode:\s*"auto"/);
+});
+
+test("teams runtime does not propagate plan permission mode into handoff runs", () => {
+  const source = fs.readFileSync("public/ui/settings/teams.js", "utf8");
+
+  assert.match(source, /function effectiveTeamPermissionMode/);
+  assert.match(source, /member\?\.permissionMode === "bypass" \? "bypass" : "auto"/);
+  assert.doesNotMatch(source, /setPerm\?\.\(member\.permissionMode\)/);
+  assert.doesNotMatch(source, /\{ value: "plan", label: "Plan" \}/);
+});
+
 test("tauri bridge exposes teams workflow methods", () => {
   const source = fs.readFileSync("public/tauri-bridge.js", "utf8");
   const calls = [];
