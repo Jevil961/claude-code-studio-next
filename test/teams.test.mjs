@@ -43,11 +43,19 @@ test("teams can be user-defined and persisted", async () => {
     instruction: "Implement after review.",
     requiresApproval: false,
   }).step;
+  teams.updateTeamWorkflow(team.id, {
+    entryStepId: reviewStep.id,
+    finalStepId: buildStep.id,
+    workflowEdges: [{ from: reviewStep.id, to: buildStep.id }],
+  });
 
   const stored = teams.listTeams()[0];
   assert.equal(stored.name, "Launch Team");
   assert.equal(stored.members.length, 2);
   assert.equal(stored.workflow.length, 2);
+  assert.equal(stored.workflowEdges.length, 1);
+  assert.equal(stored.entryStepId, reviewStep.id);
+  assert.equal(stored.finalStepId, buildStep.id);
   assert.equal(stored.members[0].providerId, "provider-a");
   assert.equal(stored.members[0].identityId, "identity-reviewer");
   assert.equal(stored.workflow[1].requiresApproval, false);
@@ -71,6 +79,8 @@ test("teams can be user-defined and persisted", async () => {
   assert.match(prompt.prompt, /Ship Teams workflows/);
   assert.match(prompt.prompt, /Previous accepted outputs/);
   assert.match(prompt.prompt, /Risk: context switching can be confusing/);
+  assert.match(prompt.prompt, /This is the final mapped step/);
+  assert.equal(prompt.nextSteps.length, 0);
 
   const firstStepPrompt = teams.composeTeamStepPrompt({
     teamId: team.id,
@@ -81,6 +91,8 @@ test("teams can be user-defined and persisted", async () => {
     },
   });
   assert.doesNotMatch(firstStepPrompt.prompt, /later step/);
+  assert.match(firstStepPrompt.prompt, /After this step, hand off to: Build/);
+  assert.equal(firstStepPrompt.nextSteps[0].id, buildStep.id);
 });
 
 test("deleting a team member keeps workflow steps but clears assignment", async () => {

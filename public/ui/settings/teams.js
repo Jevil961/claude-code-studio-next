@@ -5,27 +5,55 @@ import { showConfirm, showModal } from "../modal.js";
 import { escapeHtml } from "../../markdown.js";
 import { loadIdentities, loadProviders, loadTeams } from "../data-loader.js";
 
+const NODE_W = 190;
+const NODE_H = 96;
+
 function selectedTeam() {
   return data.teams.find(team => team.id === state.selectedTeamId) || data.teams[0] || null;
 }
 
-function memberName(team, memberId) {
-  const member = team.members.find(item => item.id === memberId);
-  return member ? `${member.icon || "ID"} ${member.name}` : "未分配成员";
+function workflowEdges(team) {
+  return Array.isArray(team.workflowEdges) ? team.workflowEdges : [];
+}
+
+function stepById(team, stepId) {
+  return team.workflow.find(step => step.id === stepId) || null;
+}
+
+function memberById(team, memberId) {
+  return team.members.find(member => member.id === memberId) || null;
+}
+
+function memberLabel(team, memberId) {
+  const member = memberById(team, memberId);
+  return member ? `${member.icon || "ID"} ${member.name}` : "未绑定身份";
 }
 
 function providerName(providerId) {
-  return data.providers.find(provider => provider.id === providerId)?.name || "默认 Provider";
+  return data.providers.find(provider => provider.id === providerId)?.name || "当前 Provider";
 }
 
 function identityName(identityId) {
-  return data.identities.find(identity => identity.id === identityId)?.name || "不绑定身份";
+  return data.identities.find(identity => identity.id === identityId)?.name || "未绑定 Skills 身份";
 }
 
 function runState(teamId) {
   state.teamRuns ||= {};
-  state.teamRuns[teamId] ||= { task: "", outputs: {}, updatedAt: Date.now() };
+  state.teamRuns[teamId] ||= { task: "", currentStepId: "", outputs: {}, completed: false, updatedAt: Date.now() };
   return state.teamRuns[teamId];
+}
+
+function activeStepId(team) {
+  const run = runState(team.id);
+  if (run.currentStepId && stepById(team, run.currentStepId)) return run.currentStepId;
+  return team.entryStepId || team.workflow[0]?.id || "";
+}
+
+function nextSteps(team, stepId) {
+  return workflowEdges(team)
+    .filter(edge => edge.from === stepId)
+    .map(edge => stepById(team, edge.to))
+    .filter(Boolean);
 }
 
 function providerOptions(value = "") {
@@ -37,23 +65,16 @@ function providerOptions(value = "") {
 
 function identityOptions(value = "") {
   return [
-    { value: "", label: "不绑定身份" },
+    { value: "", label: "不绑定 Skills 身份" },
     ...data.identities.map(identity => ({ value: identity.id, label: `${identity.icon || "ID"} ${identity.name}` })),
   ].map(option => ({ ...option, selected: option.value === value }));
 }
 
 function memberOptions(team, value = "") {
   return [
-    { value: "", label: "未分配成员" },
+    { value: "", label: "未绑定身份" },
     ...team.members.map(member => ({ value: member.id, label: `${member.icon || "ID"} ${member.name}` })),
   ].map(option => ({ ...option, selected: option.value === value }));
-}
-
-function boolSelect(value) {
-  return [
-    { value: "true", label: "需要人工确认" },
-    { value: "false", label: "无需人工确认" },
-  ].map(option => ({ ...option, selected: option.value === String(value !== false) }));
 }
 
 async function refresh(renderSettingsTab) {
@@ -75,70 +96,104 @@ async function switchMemberContext(member, deps) {
       toast(r.error || "Provider 切换失败", "error");
     }
   }
-  if (member?.identityId) {
-    await deps.switchIdentity?.(member.identityId);
-  }
-  if (member?.permissionMode) {
-    deps.setPerm?.(member.permissionMode);
-  }
+  if (member?.identityId) await deps.switchIdentity?.(member.identityId);
+  if (member?.permissionMode) deps.setPerm?.(member.permissionMode);
   deps.updateFooter?.();
 }
 
-async function prepareStep(team, step, deps) {
+function setPrompt(text) {
+  const input = document.querySelector("#promptInput");
+  if (!input) return;
+  input.value = text;
+  input.dispatchEvent(new Event("input"));
+  input.focus();
+}
+
+async function ensureTask(team) {
   const run = runState(team.id);
-  if (!run.task) {
-    const result = await showModal("启动 Team 工作流", [
-      { key: "task", label: "任务", value: "", type: "textarea", placeholder: "输入这个 Team 要共同完成的任务" },
-    ]);
-    if (!result?.task?.trim()) return;
-    run.task = result.task.trim();
-    run.outputs ||= {};
-    run.updatedAt = Date.now();
-    save();
-  }
+  if (run.task?.trim()) return run.task.trim();
+  const result = await showModal("启动 Team 工作流", [
+    { key: "task", label: "用户问题", value: "", type: "textarea", placeholder: "输入问题，工作流会从入口身份开始交接处理" },
+  ]);
+  if (!result?.task?.trim()) return "";
+  run.task = result.task.trim();
+  run.outputs = {};
+  run.completed = false;
+  run.currentStepId = team.entryStepId || team.workflow[0]?.id || "";
+  run.updatedAt = Date.now();
+  save();
+  return run.task;
+}
+
+async function prepareNode(team, step, deps) {
+  const task = await ensureTask(team);
+  if (!task) return;
+  const run = runState(team.id);
+  run.currentStepId = step.id;
+  run.completed = false;
+  run.updatedAt = Date.now();
+  save();
 
   const r = await safeBridge("composeTeamStepPrompt", null, {
     teamId: team.id,
     stepId: step.id,
-    task: run.task,
+    task,
     previousOutputs: run.outputs || {},
   });
   if (!r.ok || !r.data?.prompt) {
-    toast(r.error || "生成步骤提示词失败", "error");
+    toast(r.error || "生成节点提示词失败", "error");
     return;
   }
-
   await switchMemberContext(r.data.member, deps);
-  const input = document.querySelector("#promptInput");
-  if (input) {
-    input.value = r.data.prompt;
-    input.dispatchEvent(new Event("input"));
-    input.focus();
-  }
+  setPrompt(r.data.prompt);
   document.querySelector("#settingsPage")?.classList.remove("is-open");
-  toast(`已准备步骤：${step.name}`, "success");
+  toast(`已交给：${step.name}`, "success");
 }
 
-async function acceptLastOutput(team, step, renderSettingsTab) {
+async function acceptAndHandoff(team, deps) {
+  const run = runState(team.id);
+  const step = stepById(team, activeStepId(team));
+  if (!step) {
+    toast("请先选择一个身份节点", "error");
+    return;
+  }
   const last = lastAssistantMessage();
   if (!last) {
     toast("没有可采纳的助手输出", "error");
     return;
   }
-  const run = runState(team.id);
   run.outputs ||= {};
   run.outputs[step.id] = String(last.content || "").trim();
+  const next = nextSteps(team, step.id);
+  if (next.length) {
+    run.currentStepId = next[0].id;
+    run.completed = false;
+    toast(`已采纳，下一棒交给：${next[0].name}`, "success");
+  } else {
+    run.completed = true;
+    toast("工作流已到最终节点，请确认正式输出", "success");
+  }
   run.updatedAt = Date.now();
   save();
-  toast(`已采纳：${step.name}`, "success");
+  deps.renderSettingsTab();
+}
+
+async function resetRun(team, renderSettingsTab) {
+  const run = runState(team.id);
+  run.task = "";
+  run.currentStepId = team.entryStepId || team.workflow[0]?.id || "";
+  run.outputs = {};
+  run.completed = false;
+  run.updatedAt = Date.now();
+  save();
   renderSettingsTab();
 }
 
 async function createTeamDlg(renderSettingsTab) {
-  const result = await showModal("创建 Team", [
-    { key: "name", label: "名称", value: "新 Team" },
+  const result = await showModal("创建 Team 脑图", [
+    { key: "name", label: "名称", value: "WorkBuddy Team" },
     { key: "description", label: "描述", value: "", type: "textarea" },
-    { key: "rules", label: "团队规则", value: "", type: "textarea", placeholder: "所有成员共同遵守的规则、输出格式、交接约束" },
+    { key: "rules", label: "团队规则", value: "", type: "textarea", placeholder: "所有身份共同遵守的规则、交接标准、最终输出标准" },
   ]);
   if (!result?.name?.trim()) return;
   const r = await safeBridge("createTeam", null, result);
@@ -163,7 +218,7 @@ async function editTeamDlg(team, renderSettingsTab) {
 }
 
 async function deleteTeamDlg(team, renderSettingsTab) {
-  if (!await showConfirm("删除 Team", `确定删除「${team.name}」？`)) return;
+  if (!await showConfirm("删除 Team", `确定删除“${team.name}”？`)) return;
   const r = await safeBridge("deleteTeam", null, team.id);
   if (r.ok) {
     if (state.selectedTeamId === team.id) state.selectedTeamId = "";
@@ -174,11 +229,11 @@ async function deleteTeamDlg(team, renderSettingsTab) {
 }
 
 async function memberDlg(team, member, renderSettingsTab) {
-  const result = await showModal(member ? "编辑成员" : "添加成员", [
-    { key: "name", label: "名称", value: member?.name || "新成员" },
+  const result = await showModal(member ? "编辑身份" : "添加身份", [
+    { key: "name", label: "名称", value: member?.name || "新身份" },
     { key: "icon", label: "标识", value: member?.icon || "ID" },
     { key: "role", label: "职责", value: member?.role || "", type: "textarea" },
-    { key: "rules", label: "成员规则", value: member?.rules || "", type: "textarea", placeholder: "这个成员自己的行为准则、输出格式、注意事项" },
+    { key: "rules", label: "身份规则", value: member?.rules || "", type: "textarea", placeholder: "这个身份如何思考、如何交接、如何输出" },
     { key: "providerId", label: "Provider", type: "select", value: member?.providerId || "", options: providerOptions(member?.providerId || "") },
     { key: "identityId", label: "Skills 身份", type: "select", value: member?.identityId || "", options: identityOptions(member?.identityId || "") },
     { key: "permissionMode", label: "权限模式", type: "select", value: member?.permissionMode || "auto", options: [
@@ -191,38 +246,66 @@ async function memberDlg(team, member, renderSettingsTab) {
   const method = member ? "updateTeamMember" : "createTeamMember";
   const args = member ? [team.id, member.id, result] : [team.id, result];
   const r = await safeBridge(method, null, ...args);
-  if (r.ok) { toast(member ? "成员已更新" : "成员已添加", "success"); await refresh(renderSettingsTab); }
+  if (r.ok) { toast(member ? "身份已更新" : "身份已添加", "success"); await refresh(renderSettingsTab); }
   else toast(r.error || "保存失败", "error");
 }
 
 async function deleteMemberDlg(team, member, renderSettingsTab) {
-  if (!await showConfirm("删除成员", `确定删除「${member.name}」？相关步骤会变为未分配。`)) return;
+  if (!await showConfirm("删除身份", `确定删除“${member.name}”？相关节点会变成未绑定。`)) return;
   const r = await safeBridge("deleteTeamMember", null, team.id, member.id);
-  if (r.ok) { toast("成员已删除", "success"); await refresh(renderSettingsTab); }
+  if (r.ok) { toast("身份已删除", "success"); await refresh(renderSettingsTab); }
   else toast(r.error || "删除失败", "error");
 }
 
-async function stepDlg(team, step, renderSettingsTab) {
-  const result = await showModal(step ? "编辑步骤" : "添加步骤", [
-    { key: "name", label: "步骤名", value: step?.name || "新步骤" },
-    { key: "memberId", label: "执行成员", type: "select", value: step?.memberId || "", options: memberOptions(team, step?.memberId || "") },
-    { key: "instruction", label: "步骤指令", value: step?.instruction || "", type: "textarea", placeholder: "这一步要这个成员完成什么" },
-    { key: "requiresApproval", label: "人工确认", type: "select", value: String(step?.requiresApproval !== false), options: boolSelect(step?.requiresApproval) },
+async function nodeDlg(team, step, renderSettingsTab) {
+  const result = await showModal(step ? "编辑脑图节点" : "添加脑图节点", [
+    { key: "name", label: "节点名", value: step?.name || "新处理节点" },
+    { key: "memberId", label: "执行身份", type: "select", value: step?.memberId || "", options: memberOptions(team, step?.memberId || "") },
+    { key: "instruction", label: "节点指令", value: step?.instruction || "", type: "textarea", placeholder: "这个身份收到问题后要处理什么，处理完交接什么" },
   ]);
   if (!result?.name?.trim()) return;
-  result.requiresApproval = result.requiresApproval !== "false";
   const method = step ? "updateTeamStep" : "createTeamStep";
-  const args = step ? [team.id, step.id, result] : [team.id, result];
+  const args = step ? [team.id, step.id, result] : [team.id, { ...result, x: 90 + team.workflow.length * 40, y: 90 + team.workflow.length * 30 }];
   const r = await safeBridge(method, null, ...args);
-  if (r.ok) { toast(step ? "步骤已更新" : "步骤已添加", "success"); await refresh(renderSettingsTab); }
+  if (r.ok) { toast(step ? "节点已更新" : "节点已添加", "success"); await refresh(renderSettingsTab); }
   else toast(r.error || "保存失败", "error");
 }
 
-async function deleteStepDlg(team, step, renderSettingsTab) {
-  if (!await showConfirm("删除步骤", `确定删除「${step.name}」？`)) return;
+async function deleteNodeDlg(team, step, renderSettingsTab) {
+  if (!await showConfirm("删除节点", `确定删除“${step.name}”？相关连线也会删除。`)) return;
   const r = await safeBridge("deleteTeamStep", null, team.id, step.id);
-  if (r.ok) { toast("步骤已删除", "success"); await refresh(renderSettingsTab); }
+  if (r.ok) { toast("节点已删除", "success"); await refresh(renderSettingsTab); }
   else toast(r.error || "删除失败", "error");
+}
+
+async function saveGraph(team, updates, renderSettingsTab, rerender = true) {
+  const r = await safeBridge("updateTeamWorkflow", null, team.id, updates);
+  if (!r.ok) {
+    toast(r.error || "保存脑图失败", "error");
+    return null;
+  }
+  data.teams = data.teams.map(item => item.id === team.id ? r.data : item);
+  if (rerender) renderSettingsTab();
+  return r.data;
+}
+
+async function connectNodes(team, fromId, toId, renderSettingsTab) {
+  if (!fromId || !toId || fromId === toId) return;
+  const edges = workflowEdges(team);
+  if (edges.some(edge => edge.from === fromId && edge.to === toId)) {
+    toast("这条交接线已经存在", "info");
+    return;
+  }
+  await saveGraph(team, { workflowEdges: [...edges, { from: fromId, to: toId }] }, renderSettingsTab);
+}
+
+async function deleteEdge(team, edge, renderSettingsTab) {
+  const edges = workflowEdges(team).filter(item => item.id !== edge.id);
+  await saveGraph(team, { workflowEdges: edges }, renderSettingsTab);
+}
+
+async function markNode(team, step, key, renderSettingsTab) {
+  await saveGraph(team, { [key]: step.id }, renderSettingsTab);
 }
 
 function renderTeamList({ settingsBody, renderSettingsTab }) {
@@ -239,7 +322,7 @@ function renderTeamList({ settingsBody, renderSettingsTab }) {
       <div class="slist-icon">TM</div>
       <div class="slist-body">
         <div class="slist-name">${escapeHtml(team.name)}</div>
-        <div class="slist-sub">${team.members.length} 成员 / ${team.workflow.length} 步骤 · ${escapeHtml(team.description || "")}</div>
+        <div class="slist-sub">${team.members.length} 身份 / ${team.workflow.length} 节点 / ${workflowEdges(team).length} 交接线 · ${escapeHtml(team.description || "")}</div>
       </div>
       <div class="slist-actions">
         <button class="st-btn t-btn--link" data-act="open">打开</button>
@@ -254,41 +337,171 @@ function renderTeamList({ settingsBody, renderSettingsTab }) {
   }
 }
 
-function renderTeamDetail(team, deps) {
+function renderHeader(team, deps) {
   const { settingsBody, renderSettingsTab } = deps;
   const run = runState(team.id);
+  const current = stepById(team, activeStepId(team));
   const header = document.createElement("div");
   header.className = "scard";
   header.innerHTML = `
     <div class="scard-head">
       <span class="scard-title">${escapeHtml(team.name)}</span>
       <div class="scard-actions">
-        <button class="st-btn t-btn--link" id="teamTaskBtn">任务</button>
+        <button class="st-btn t-btn--link" id="teamTaskBtn">问题</button>
+        <button class="st-btn t-btn--primary t-btn--sm" id="runCurrentBtn">交给当前身份</button>
+        <button class="st-btn t-btn--link" id="acceptOutputBtn">采纳并交接</button>
+        <button class="st-btn t-btn--link" id="resetRunBtn">重来</button>
         <button class="st-btn t-btn--link" id="editTeamBtn">编辑</button>
-        <button class="st-btn t-btn--primary t-btn--sm" id="addMemberBtn">添加成员</button>
-        <button class="st-btn t-btn--link" id="addStepBtn">添加步骤</button>
       </div>
     </div>
-    <div class="slist-sub">${escapeHtml(team.description || "用户自定义团队：成员规则、模型和 workflow 都由你决定。")}</div>
-    <div class="slist-sub" style="margin-top:4px;">当前任务：${escapeHtml(run.task || "未设置")}</div>
+    <div class="slist-sub">${escapeHtml(team.description || "先创建身份，再拖拽节点绘制脑图；连线决定问题如何交接。")}</div>
+    <div class="slist-sub" style="margin-top:4px;">当前问题：${escapeHtml(run.task || "未设置")} · 当前身份：${escapeHtml(current?.name || "未选择")} ${run.completed ? "· 已到最终输出" : ""}</div>
   `;
   settingsBody.append(header);
   header.querySelector("#teamTaskBtn").addEventListener("click", async () => {
-    const result = await showModal("Team 任务", [{ key: "task", label: "任务", value: run.task || "", type: "textarea" }]);
+    const result = await showModal("Team 问题", [{ key: "task", label: "问题", value: run.task || "", type: "textarea" }]);
     if (!result) return;
     run.task = result.task || "";
+    run.currentStepId = activeStepId(team);
+    run.completed = false;
     run.updatedAt = Date.now();
     save();
     renderSettingsTab();
   });
+  header.querySelector("#runCurrentBtn").addEventListener("click", () => current ? prepareNode(team, current, deps) : toast("请先添加并选择节点", "error"));
+  header.querySelector("#acceptOutputBtn").addEventListener("click", () => acceptAndHandoff(team, deps));
+  header.querySelector("#resetRunBtn").addEventListener("click", () => resetRun(team, renderSettingsTab));
   header.querySelector("#editTeamBtn").addEventListener("click", () => editTeamDlg(team, renderSettingsTab));
-  header.querySelector("#addMemberBtn").addEventListener("click", () => memberDlg(team, null, renderSettingsTab));
-  header.querySelector("#addStepBtn").addEventListener("click", () => stepDlg(team, null, renderSettingsTab));
+}
 
-  const membersTitle = document.createElement("div");
-  membersTitle.style.cssText = "margin:14px 0 6px;font-size:12px;font-weight:700;color:var(--td-text-color-secondary);";
-  membersTitle.textContent = "成员";
-  settingsBody.append(membersTitle);
+function renderMindmap(team, deps) {
+  const { settingsBody, renderSettingsTab } = deps;
+  const run = runState(team.id);
+  const activeId = activeStepId(team);
+  const card = document.createElement("div");
+  card.className = "scard";
+  card.innerHTML = `
+    <div class="scard-head">
+      <span class="scard-title">身份脑图</span>
+      <div class="scard-actions">
+        <button class="st-btn t-btn--primary t-btn--sm" id="addNodeBtn">添加节点</button>
+        <button class="st-btn t-btn--link" id="addMemberBtn">添加身份</button>
+      </div>
+    </div>
+    <div class="slist-sub">拖动节点排布脑图；点“连接”先选来源，再点目标；入口节点接收你的问题，最终节点给你正式输出。</div>
+  `;
+  const canvas = document.createElement("div");
+  canvas.className = "team-map-canvas";
+  canvas.style.cssText = "position:relative;height:430px;margin-top:10px;overflow:auto;border:1px solid var(--td-border-level-2-color);background:var(--td-bg-color-container);border-radius:8px;";
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", "1200");
+  svg.setAttribute("height", "760");
+  svg.style.cssText = "position:absolute;inset:0;pointer-events:none;";
+  canvas.append(svg);
+  card.append(canvas);
+  settingsBody.append(card);
+
+  card.querySelector("#addNodeBtn").addEventListener("click", () => nodeDlg(team, null, renderSettingsTab));
+  card.querySelector("#addMemberBtn").addEventListener("click", () => memberDlg(team, null, renderSettingsTab));
+
+  function drawEdges() {
+    svg.innerHTML = workflowEdges(team).map(edge => {
+      const from = stepById(team, edge.from);
+      const to = stepById(team, edge.to);
+      if (!from || !to) return "";
+      const x1 = (from.x || 0) + NODE_W;
+      const y1 = (from.y || 0) + NODE_H / 2;
+      const x2 = to.x || 0;
+      const y2 = (to.y || 0) + NODE_H / 2;
+      const mid = Math.max(40, Math.abs(x2 - x1) / 2);
+      const d = `M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`;
+      return `<path d="${d}" fill="none" stroke="var(--td-brand-color)" stroke-width="2"/><circle cx="${x2}" cy="${y2}" r="4" fill="var(--td-brand-color)"/>`;
+    }).join("");
+  }
+
+  for (const step of team.workflow) {
+    const member = memberById(team, step.memberId);
+    const done = Boolean(run.outputs?.[step.id]);
+    const node = document.createElement("div");
+    node.className = "team-node-card";
+    node.style.cssText = `position:absolute;left:${step.x || 80}px;top:${step.y || 80}px;width:${NODE_W}px;min-height:${NODE_H}px;padding:10px;border:1px solid ${step.id === activeId ? "var(--td-brand-color)" : "var(--td-border-level-2-color)"};border-radius:8px;background:var(--td-bg-color-container);box-shadow:var(--td-shadow-1);cursor:grab;z-index:2;`;
+    node.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="slist-icon">${escapeHtml(member?.icon || "ID")}</div>
+        <div style="min-width:0;">
+          <div class="slist-name">${escapeHtml(step.name)}</div>
+          <div class="slist-sub">${escapeHtml(memberLabel(team, step.memberId))}</div>
+        </div>
+      </div>
+      <div class="slist-sub" style="margin-top:6px;">${escapeHtml(step.instruction || "未填写节点指令")}</div>
+      <div class="slist-sub" style="margin-top:6px;">${step.id === team.entryStepId ? "入口 " : ""}${step.id === team.finalStepId ? "最终 " : ""}${done ? "已采纳" : "待处理"}</div>
+      <div class="slist-actions" style="margin-top:8px;">
+        <button class="st-btn t-btn--primary t-btn--sm" data-act="run">运行</button>
+        <button class="st-btn t-btn--link" data-act="connect">连接</button>
+        <button class="st-btn t-btn--link" data-act="entry">入口</button>
+        <button class="st-btn t-btn--link" data-act="final">最终</button>
+        <button class="st-btn t-btn--link" data-act="edit">编辑</button>
+        <button class="st-btn t-btn--danger t-btn--sm" data-act="delete">删除</button>
+      </div>
+    `;
+    node.querySelector('[data-act="run"]').addEventListener("click", event => { event.stopPropagation(); prepareNode(team, step, deps); });
+    node.querySelector('[data-act="connect"]').addEventListener("click", event => {
+      event.stopPropagation();
+      if (!state.teamConnectFrom) {
+        state.teamConnectFrom = step.id;
+        save();
+        toast(`连接起点：${step.name}。再点目标节点的“连接”。`, "info");
+        return;
+      }
+      const fromId = state.teamConnectFrom;
+      state.teamConnectFrom = "";
+      save();
+      connectNodes(team, fromId, step.id, renderSettingsTab);
+    });
+    node.querySelector('[data-act="entry"]').addEventListener("click", event => { event.stopPropagation(); markNode(team, step, "entryStepId", renderSettingsTab); });
+    node.querySelector('[data-act="final"]').addEventListener("click", event => { event.stopPropagation(); markNode(team, step, "finalStepId", renderSettingsTab); });
+    node.querySelector('[data-act="edit"]').addEventListener("click", event => { event.stopPropagation(); nodeDlg(team, step, renderSettingsTab); });
+    node.querySelector('[data-act="delete"]').addEventListener("click", event => { event.stopPropagation(); deleteNodeDlg(team, step, renderSettingsTab); });
+    node.addEventListener("click", () => {
+      run.currentStepId = step.id;
+      run.updatedAt = Date.now();
+      save();
+      renderSettingsTab();
+    });
+    node.addEventListener("pointerdown", event => {
+      if (event.target.closest("button")) return;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const originX = step.x || 0;
+      const originY = step.y || 0;
+      node.style.cursor = "grabbing";
+      const onMove = moveEvent => {
+        step.x = Math.max(20, originX + moveEvent.clientX - startX);
+        step.y = Math.max(20, originY + moveEvent.clientY - startY);
+        node.style.left = `${step.x}px`;
+        node.style.top = `${step.y}px`;
+        drawEdges();
+      };
+      const onUp = async () => {
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        node.style.cursor = "grab";
+        await safeBridge("updateTeamStep", null, team.id, step.id, { x: step.x, y: step.y });
+      };
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+    });
+    canvas.append(node);
+  }
+  drawEdges();
+}
+
+function renderMembers(team, deps) {
+  const { settingsBody, renderSettingsTab } = deps;
+  const title = document.createElement("div");
+  title.style.cssText = "margin:14px 0 6px;font-size:12px;font-weight:700;color:var(--td-text-color-secondary);";
+  title.textContent = "身份库";
+  settingsBody.append(title);
 
   for (const member of team.members) {
     const card = document.createElement("div");
@@ -309,59 +522,45 @@ function renderTeamDetail(team, deps) {
     card.querySelector('[data-act="delete"]').addEventListener("click", () => deleteMemberDlg(team, member, renderSettingsTab));
     settingsBody.append(card);
   }
-  if (!team.members.length) {
-    const empty = document.createElement("div");
-    empty.className = "slist-sub";
-    empty.textContent = "还没有成员。先添加一个成员，写规则并绑定模型/身份。";
-    settingsBody.append(empty);
-  }
+}
 
-  const stepsTitle = document.createElement("div");
-  stepsTitle.style.cssText = "margin:14px 0 6px;font-size:12px;font-weight:700;color:var(--td-text-color-secondary);";
-  stepsTitle.textContent = "工作流";
-  settingsBody.append(stepsTitle);
-
-  team.workflow.forEach((step, index) => {
-    const hasOutput = Boolean(run.outputs?.[step.id]);
-    const card = document.createElement("div");
-    card.className = "slist-item";
-    card.innerHTML = `
-      <div class="slist-icon">${index + 1}</div>
+function renderEdges(team, deps) {
+  const { settingsBody, renderSettingsTab } = deps;
+  const title = document.createElement("div");
+  title.style.cssText = "margin:14px 0 6px;font-size:12px;font-weight:700;color:var(--td-text-color-secondary);";
+  title.textContent = "交接线";
+  settingsBody.append(title);
+  for (const edge of workflowEdges(team)) {
+    const row = document.createElement("div");
+    row.className = "slist-item";
+    row.innerHTML = `
+      <div class="slist-icon">→</div>
       <div class="slist-body">
-        <div class="slist-name">${escapeHtml(step.name)} ${step.requiresApproval ? '<span style="font-size:10px;color:var(--td-warning-color);">人工确认</span>' : ""}</div>
-        <div class="slist-sub">${escapeHtml(memberName(team, step.memberId))}</div>
-        <div class="slist-sub">${escapeHtml(step.instruction || "")}</div>
-        <div class="slist-sub">${hasOutput ? "已采纳输出" : "未采纳输出"}</div>
+        <div class="slist-name">${escapeHtml(stepById(team, edge.from)?.name || "未知")} → ${escapeHtml(stepById(team, edge.to)?.name || "未知")}</div>
+        <div class="slist-sub">处理完成后沿这条线交给下一个身份</div>
       </div>
-      <div class="slist-actions">
-        <button class="st-btn t-btn--primary t-btn--sm" data-act="prepare">准备运行</button>
-        <button class="st-btn t-btn--link" data-act="accept">采纳最后回复</button>
-        <button class="st-btn t-btn--link" data-act="edit">编辑</button>
-        <button class="st-btn t-btn--danger t-btn--sm" data-act="delete">删除</button>
-      </div>
+      <div class="slist-actions"><button class="st-btn t-btn--danger t-btn--sm" data-act="delete">删除</button></div>
     `;
-    card.querySelector('[data-act="prepare"]').addEventListener("click", () => prepareStep(team, step, deps));
-    card.querySelector('[data-act="accept"]').addEventListener("click", () => acceptLastOutput(team, step, renderSettingsTab));
-    card.querySelector('[data-act="edit"]').addEventListener("click", () => stepDlg(team, step, renderSettingsTab));
-    card.querySelector('[data-act="delete"]').addEventListener("click", () => deleteStepDlg(team, step, renderSettingsTab));
-    settingsBody.append(card);
-  });
-  if (!team.workflow.length) {
-    const empty = document.createElement("div");
-    empty.className = "slist-sub";
-    empty.textContent = "还没有步骤。添加步骤后，就能按人工工作流逐步运行。";
-    settingsBody.append(empty);
+    row.querySelector('[data-act="delete"]').addEventListener("click", () => deleteEdge(team, edge, renderSettingsTab));
+    settingsBody.append(row);
   }
 }
 
+function renderTeamDetail(team, deps) {
+  renderHeader(team, deps);
+  renderMindmap(team, deps);
+  renderMembers(team, deps);
+  renderEdges(team, deps);
+}
+
 export function renderTeamsSettings(deps) {
-  const { settingsBody, renderSettingsTab } = deps;
+  const { settingsBody } = deps;
   if (!data.teams.length) {
     renderTeamList(deps);
     const empty = document.createElement("div");
     empty.className = "slist-sub";
     empty.style.padding = "10px 2px";
-    empty.textContent = "Teams 是用户自定义的身份工作流：你决定成员、规则、模型、Skills 身份和步骤顺序。";
+    empty.textContent = "Teams 是由用户绘制的身份脑图：先定义身份，再把身份节点连成问题交接流。";
     settingsBody.append(empty);
     return;
   }

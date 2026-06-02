@@ -77,6 +77,7 @@
     createTeamStep: "teams:createStep",
     updateTeamStep: "teams:updateStep",
     deleteTeamStep: "teams:deleteStep",
+    updateTeamWorkflow: "teams:updateWorkflow",
     composeTeamStepPrompt: "teams:composeStepPrompt",
     detectClaude: "claude:detect",
     getClaudeSetup: "claude:getSetup",

@@ -40,6 +40,7 @@ class FakeElement {
   querySelector() { return new FakeElement(); }
   querySelectorAll() { return []; }
   cloneNode() { return new FakeElement(this.selector); }
+  setAttribute(name, value) { this[name] = String(value); }
   set innerHTML(value) {
     this._innerHTML = String(value ?? "");
     this.children = [];
@@ -88,7 +89,9 @@ function installFakeDom() {
     querySelector: get,
     querySelectorAll() { return []; },
     createElement: tag => new FakeElement(tag),
+    createElementNS: (_ns, tag) => new FakeElement(tag),
     addEventListener() {},
+    removeEventListener() {},
   };
 
   nodes.set("#tplConv", new FakeTemplate(new FakeConversationButton()));
@@ -282,9 +285,10 @@ test("teams settings renders user-defined members and workflow steps", async () 
 
 test("tauri bridge exposes teams workflow methods", () => {
   const source = fs.readFileSync("public/tauri-bridge.js", "utf8");
+  const calls = [];
   const window = {
     __TAURI__: {
-      core: { invoke: async () => ({ ok: true }) },
+      core: { invoke: async (command, payload) => { calls.push({ command, payload }); return { ok: true }; } },
       event: { listen: async () => () => {} },
     },
   };
@@ -302,8 +306,14 @@ test("tauri bridge exposes teams workflow methods", () => {
     "createTeamStep",
     "updateTeamStep",
     "deleteTeamStep",
+    "updateTeamWorkflow",
     "composeTeamStepPrompt",
   ]) {
     assert.equal(typeof window.agentBridge[method], "function", method);
   }
+
+  window.agentBridge.listTeams();
+  assert.equal(calls[0].command, "backend_call");
+  assert.equal(calls[0].payload.method, "listTeams");
+  assert.equal(calls[0].payload.args.length, 0);
 });

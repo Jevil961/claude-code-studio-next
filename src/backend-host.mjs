@@ -228,6 +228,7 @@ const handlers = {
   createTeamStep: (teamId, data) => ok(teams.createTeamStep(teamId, data)),
   updateTeamStep: (teamId, stepId, updates) => ok(teams.updateTeamStep(teamId, stepId, updates)),
   deleteTeamStep: (teamId, stepId) => ok(teams.deleteTeamStep(teamId, stepId)),
+  updateTeamWorkflow: (teamId, updates) => ok(teams.updateTeamWorkflow(teamId, updates)),
   composeTeamStepPrompt: (payload) => ok(teams.composeTeamStepPrompt(payload)),
   getProviderPresets: () => ok({ presets: PROVIDER_PRESETS, apiFormats: API_FORMATS }),
   fetchModels: (opts = {}) => wrapped(() => {
