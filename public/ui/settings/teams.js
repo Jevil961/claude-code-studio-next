@@ -7,6 +7,8 @@ import { loadIdentities, loadProviders, loadTeams } from "../data-loader.js";
 
 const NODE_W = 190;
 const NODE_H = 96;
+const CANVAS_W = 1800;
+const CANVAS_H = 1100;
 const COMPONENTS = [
   { type: "start", name: "开始", icon: "S", instruction: "接收右侧任务输入，并交给第一位处理身份。" },
   { type: "intake", name: "身份处理", icon: "ID", instruction: "接收上游输入，按身份规则处理后交接给下一个节点。" },
@@ -122,6 +124,10 @@ function memberOptions(team, value = "") {
   ].map(option => ({ ...option, selected: option.value === value }));
 }
 
+function stepOptions(team, value = "") {
+  return team.workflow.map(step => ({ value: step.id, label: step.name, selected: step.id === value }));
+}
+
 async function refresh(renderSettingsTab) {
   await Promise.allSettled([loadTeams(), loadProviders(), loadIdentities()]);
   renderSettingsTab();
@@ -207,6 +213,7 @@ async function prepareNode(team, step, deps) {
   await switchMemberContext(r.data.member, deps);
   setPrompt(r.data.prompt);
   document.querySelector("#settingsPage")?.classList.remove("is-open");
+  document.querySelector("#teamsPage")?.classList.remove("is-open");
   toast(`已交给：${step.name}`, "success");
 }
 
@@ -503,6 +510,25 @@ async function addNodeFromComponent(team, type, position, renderSettingsTab) {
   await refresh(renderSettingsTab);
 }
 
+async function addNodeFromMember(team, memberId, position, renderSettingsTab) {
+  const member = memberById(team, memberId);
+  if (!member) return;
+  const r = await safeBridge("createTeamStep", null, team.id, {
+    name: member.name,
+    nodeType: "work",
+    memberId: member.id,
+    instruction: member.role || member.rules || "按该身份规则处理上游输入，并把结果交给下一节点。",
+    x: position?.x ?? 140 + team.workflow.length * 48,
+    y: position?.y ?? 140 + team.workflow.length * 36,
+  });
+  if (r.ok) {
+    toast(`已添加身份节点：${member.name}`, "success");
+    await refresh(renderSettingsTab);
+  } else {
+    toast(r.error || "添加身份节点失败", "error");
+  }
+}
+
 async function deleteNodeDlg(team, step, renderSettingsTab) {
   if (!await showConfirm("删除节点", `确定删除“${step.name}”？相关连线也会删除。`)) return;
   const r = await safeBridge("deleteTeamStep", null, team.id, step.id);
@@ -610,15 +636,20 @@ function renderHeader(team, deps) {
   header.innerHTML = `
     <div class="scard-head">
       <span class="scard-title">运行任务</span>
-      <div class="scard-actions">
-        <button class="st-btn t-btn--link" id="startFlowBtn">从开始运行</button>
-        <button class="st-btn t-btn--primary t-btn--sm" id="runCurrentBtn">交给当前身份</button>
-        <button class="st-btn t-btn--link" id="acceptOutputBtn">采纳并交接</button>
-        <button class="st-btn t-btn--link" id="resetRunBtn">重来</button>
-        <button class="st-btn t-btn--link" id="editTeamBtn">编辑</button>
+      <div class="scard-actions"><button class="st-btn t-btn--link" id="editTeamBtn">编辑 Team</button></div>
+    </div>
+    <div class="team-run-composer">
+      <textarea id="teamTaskInput" placeholder="输入任务，然后从 Start 节点运行...">${escapeHtml(run.task || "")}</textarea>
+      <div class="team-run-actions">
+        <span class="slist-sub" style="white-space:normal;">${escapeHtml(current?.name || "未选择节点")}${run.completed ? " · 已完成" : ""}</span>
+        <div class="scard-actions">
+          <button class="st-btn t-btn--link" id="resetRunBtn" type="button">清空</button>
+          <button class="st-btn t-btn--link" id="acceptOutputBtn" type="button">采纳并交接</button>
+          <button class="st-btn t-btn--link" id="runCurrentBtn" type="button">运行当前</button>
+          <button class="st-btn t-btn--primary t-btn--sm" id="startFlowBtn" type="button">从开始运行</button>
+        </div>
       </div>
     </div>
-    <textarea class="team-task-input" id="teamTaskInput" placeholder="在这里输入任务。工作流会从 Start/入口节点开始交给对应身份处理。">${escapeHtml(run.task || "")}</textarea>
     <div class="slist-sub" style="margin-top:8px;white-space:normal;">当前节点：${escapeHtml(current?.name || "未选择")} ${run.completed ? "· 已完成" : ""}</div>
     <div class="slist-sub" style="margin-top:4px;white-space:normal;">${escapeHtml(team.description || "左侧拖组件，中间连线，右侧输入任务并运行。")}</div>
   `;
@@ -714,24 +745,48 @@ function renderMindmap(team, deps) {
   const canvas = document.createElement("div");
   canvas.className = "team-map-canvas";
   canvas.style.cssText = "position:relative;height:560px;margin-top:10px;overflow:auto;border:1px solid var(--td-border-level-2-color);background:var(--td-bg-color-container);border-radius:8px;";
+  const spacer = document.createElement("div");
+  spacer.style.cssText = `position:absolute;left:0;top:0;width:${CANVAS_W}px;height:${CANVAS_H}px;pointer-events:none;`;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", String(CANVAS_W));
+  svg.setAttribute("height", String(CANVAS_H));
+  svg.style.cssText = "position:absolute;left:0;top:0;pointer-events:none;";
+  canvas.append(spacer, svg);
   canvas.addEventListener("dragover", event => {
-    if (event.dataTransfer?.types?.includes("text/team-node-type")) event.preventDefault();
+    if (event.dataTransfer?.types?.includes("text/team-node-type") || event.dataTransfer?.types?.includes("text/team-member-id")) event.preventDefault();
   });
   canvas.addEventListener("drop", event => {
     const type = event.dataTransfer?.getData("text/team-node-type") || event.dataTransfer?.getData("text/plain");
-    if (!type) return;
+    const memberId = event.dataTransfer?.getData("text/team-member-id");
+    if (!type && !memberId) return;
     event.preventDefault();
     const rect = canvas.getBoundingClientRect();
-    addNodeFromComponent(team, type, {
+    const position = {
       x: Math.max(20, event.clientX - rect.left + canvas.scrollLeft),
       y: Math.max(20, event.clientY - rect.top + canvas.scrollTop),
-    }, renderSettingsTab);
+    };
+    if (memberId) addNodeFromMember(team, memberId, position, renderSettingsTab);
+    else addNodeFromComponent(team, type, position, renderSettingsTab);
   });
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("width", "1200");
-  svg.setAttribute("height", "760");
-  svg.style.cssText = "position:absolute;inset:0;pointer-events:none;";
-  canvas.append(svg);
+  canvas.addEventListener("pointerdown", event => {
+    if (event.target !== canvas && event.target !== svg) return;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const originLeft = canvas.scrollLeft;
+    const originTop = canvas.scrollTop;
+    canvas.classList.add("is-panning");
+    const onMove = moveEvent => {
+      canvas.scrollLeft = originLeft - (moveEvent.clientX - startX);
+      canvas.scrollTop = originTop - (moveEvent.clientY - startY);
+    };
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      canvas.classList.remove("is-panning");
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  });
   card.append(canvas);
   settingsBody.append(card);
 
@@ -774,9 +829,6 @@ function renderMindmap(team, deps) {
       <div class="slist-actions" style="margin-top:8px;">
         <button class="st-btn t-btn--primary t-btn--sm" data-act="run">运行</button>
         <button class="st-btn t-btn--link" data-act="connect">连接</button>
-        <button class="st-btn t-btn--link" data-act="entry">入口</button>
-        <button class="st-btn t-btn--link" data-act="final">最终</button>
-        <button class="st-btn t-btn--link" data-act="edit">编辑</button>
         <button class="st-btn t-btn--danger t-btn--sm" data-act="delete">删除</button>
       </div>
     `;
@@ -794,9 +846,6 @@ function renderMindmap(team, deps) {
       save();
       connectNodes(team, fromId, step.id, renderSettingsTab);
     });
-    node.querySelector('[data-act="entry"]').addEventListener("click", event => { event.stopPropagation(); markNode(team, step, "entryStepId", renderSettingsTab); });
-    node.querySelector('[data-act="final"]').addEventListener("click", event => { event.stopPropagation(); markNode(team, step, "finalStepId", renderSettingsTab); });
-    node.querySelector('[data-act="edit"]').addEventListener("click", event => { event.stopPropagation(); nodeDlg(team, step, renderSettingsTab); });
     node.querySelector('[data-act="delete"]').addEventListener("click", event => { event.stopPropagation(); deleteNodeDlg(team, step, renderSettingsTab); });
     node.addEventListener("click", () => {
       run.currentStepId = step.id;
@@ -834,41 +883,92 @@ function renderMindmap(team, deps) {
 
 function renderMembers(team, deps) {
   const { settingsBody, renderSettingsTab } = deps;
-  const title = document.createElement("div");
-  title.style.cssText = "margin:14px 0 6px;font-size:12px;font-weight:700;color:var(--td-text-color-secondary);";
-  title.textContent = "身份库";
-  settingsBody.append(title);
-
+  const card = document.createElement("div");
+  card.className = "scard";
+  card.innerHTML = `
+    <div class="scard-head">
+      <span class="scard-title">身份库</span>
+      <div class="scard-actions"><button class="st-btn t-btn--primary t-btn--sm" id="addMemberFromLibraryBtn">添加身份</button></div>
+    </div>
+    <div class="slist-sub" style="white-space:normal;margin-bottom:8px;">拖到画布即可生成绑定身份的处理节点。</div>
+    <div class="team-member-palette"></div>
+  `;
+  settingsBody.append(card);
+  card.querySelector("#addMemberFromLibraryBtn").addEventListener("click", () => memberDlg(team, null, renderSettingsTab));
+  const list = card.querySelector(".team-member-palette");
   for (const member of team.members) {
-    const card = document.createElement("div");
-    card.className = "slist-item";
-    card.innerHTML = `
+    const row = document.createElement("div");
+    row.className = "team-member-chip";
+    row.draggable = true;
+    row.innerHTML = `
       <div class="slist-icon">${escapeHtml(member.icon || "ID")}</div>
       <div class="slist-body">
         <div class="slist-name">${escapeHtml(member.name)}</div>
         <div class="slist-sub">${escapeHtml(member.role || "")}</div>
-        <div class="slist-sub">${escapeHtml(providerName(member.providerId))} / ${escapeHtml(identityName(member.identityId))} / ${escapeHtml(member.permissionMode || "auto")}</div>
+        <div class="slist-sub">${escapeHtml(providerName(member.providerId))} / ${escapeHtml(identityName(member.identityId))}</div>
       </div>
       <div class="slist-actions">
         <button class="st-btn t-btn--link" data-act="edit">编辑</button>
         <button class="st-btn t-btn--danger t-btn--sm" data-act="delete">删除</button>
       </div>
     `;
-    card.querySelector('[data-act="edit"]').addEventListener("click", () => memberDlg(team, member, renderSettingsTab));
-    card.querySelector('[data-act="delete"]').addEventListener("click", () => deleteMemberDlg(team, member, renderSettingsTab));
-    settingsBody.append(card);
+    row.addEventListener("click", event => {
+      if (event.target.closest("button[data-act]")) return;
+      addNodeFromMember(team, member.id, null, renderSettingsTab);
+    });
+    row.addEventListener("dragstart", event => {
+      event.dataTransfer?.setData("text/team-member-id", member.id);
+      event.dataTransfer?.setData("text/plain", member.id);
+    });
+    row.querySelector('[data-act="edit"]').addEventListener("click", event => { event.stopPropagation(); memberDlg(team, member, renderSettingsTab); });
+    row.querySelector('[data-act="delete"]').addEventListener("click", event => { event.stopPropagation(); deleteMemberDlg(team, member, renderSettingsTab); });
+    list.append(row);
+  }
+  if (!team.members.length) {
+    const empty = document.createElement("div");
+    empty.className = "slist-sub";
+    empty.style.whiteSpace = "normal";
+    empty.textContent = "还没有身份。先添加项目经理、开发、测试等身份，再拖到画布。";
+    list.append(empty);
   }
 }
 
 function renderEdges(team, deps) {
   const { settingsBody, renderSettingsTab } = deps;
-  const title = document.createElement("div");
-  title.style.cssText = "margin:14px 0 6px;font-size:12px;font-weight:700;color:var(--td-text-color-secondary);";
-  title.textContent = "交接线";
-  settingsBody.append(title);
+  const card = document.createElement("div");
+  card.className = "scard";
+  const options = stepOptions(team);
+  card.innerHTML = `
+    <div class="scard-head"><span class="scard-title">交接线</span></div>
+    <div class="team-edge-builder">
+      <select class="team-config-select" id="edgeFromSelect">${options.map(option => `<option value="${option.value}">${escapeHtml(option.label)}</option>`).join("")}</select>
+      <select class="team-config-select" id="edgeToSelect">${options.map(option => `<option value="${option.value}">${escapeHtml(option.label)}</option>`).join("")}</select>
+      <select class="team-config-select" id="edgeConditionSelect">${conditionOptions("default").map(option => `<option value="${option.value}">${escapeHtml(option.label)}</option>`).join("")}</select>
+      <input class="team-config-input" id="edgeLabelInput" placeholder="交接说明，例如：测试不满意返工">
+      <button class="st-btn t-btn--primary t-btn--sm" id="quickAddEdgeBtn" type="button">添加连线</button>
+    </div>
+    <div class="slist-sub" style="white-space:normal;margin-top:8px;">条件连线用于循环：例如测试 revise 回开发，pass 到项目经理。</div>
+  `;
+  settingsBody.append(card);
+  card.querySelector("#quickAddEdgeBtn").addEventListener("click", async () => {
+    const from = card.querySelector("#edgeFromSelect").value;
+    const to = card.querySelector("#edgeToSelect").value;
+    const condition = card.querySelector("#edgeConditionSelect").value || "default";
+    const label = card.querySelector("#edgeLabelInput").value || "";
+    if (!from || !to || from === to) {
+      toast("请选择不同的来源和目标节点", "error");
+      return;
+    }
+    const edges = workflowEdges(team);
+    if (edges.some(edge => edge.from === from && edge.to === to && edge.condition === condition)) {
+      toast("这条连线已存在", "info");
+      return;
+    }
+    await saveGraph(team, { workflowEdges: [...edges, { from, to, condition, label }] }, renderSettingsTab);
+  });
   for (const edge of workflowEdges(team)) {
     const row = document.createElement("div");
-    row.className = "slist-item";
+    row.className = "slist-item team-edge-row";
     row.innerHTML = `
       <div class="slist-icon">→</div>
       <div class="slist-body">
