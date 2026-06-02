@@ -91,7 +91,7 @@ test("teams can be user-defined and persisted", async () => {
     },
   });
   assert.doesNotMatch(firstStepPrompt.prompt, /later step/);
-  assert.match(firstStepPrompt.prompt, /After this step, hand off to: Build/);
+  assert.match(firstStepPrompt.prompt, /Available handoff routes: Build/);
   assert.equal(firstStepPrompt.nextSteps[0].id, buildStep.id);
 });
 
@@ -104,4 +104,57 @@ test("deleting a team member keeps workflow steps but clears assignment", async 
   const result = teams.deleteTeamMember(team.id, member.id);
 
   assert.equal(result.team.workflow.find(item => item.id === step.id).memberId, "");
+});
+
+test("teams support conditional review loops and final approval prompts", async () => {
+  const teams = await import("../src/teams.js");
+  const team = teams.createTeam({ name: "PM Dev QA" });
+  const pm = teams.createTeamMember(team.id, { name: "PM" }).member;
+  const dev = teams.createTeamMember(team.id, { name: "Developer" }).member;
+  const qa = teams.createTeamMember(team.id, { name: "QA" }).member;
+  const intake = teams.createTeamStep(team.id, { name: "Clarify", nodeType: "intake", memberId: pm.id }).step;
+  const build = teams.createTeamStep(team.id, { name: "Build", nodeType: "work", memberId: dev.id }).step;
+  const review = teams.createTeamStep(team.id, {
+    name: "Review",
+    nodeType: "review",
+    memberId: qa.id,
+    decisionInstruction: "Use DECISION: revise or DECISION: pass.",
+  }).step;
+  const approval = teams.createTeamStep(team.id, {
+    name: "Approval",
+    nodeType: "approval",
+    memberId: pm.id,
+    decisionInstruction: "Use DECISION: approve or DECISION: reject.",
+  }).step;
+
+  teams.updateTeamWorkflow(team.id, {
+    entryStepId: intake.id,
+    finalStepId: approval.id,
+    workflowEdges: [
+      { from: intake.id, to: build.id, condition: "default" },
+      { from: build.id, to: review.id, condition: "default" },
+      { from: review.id, to: build.id, condition: "revise" },
+      { from: review.id, to: approval.id, condition: "pass" },
+      { from: approval.id, to: build.id, condition: "reject" },
+    ],
+  });
+
+  const reviewPrompt = teams.composeTeamStepPrompt({
+    teamId: team.id,
+    stepId: review.id,
+    task: "Fix app startup",
+    previousOutputs: { [build.id]: "Implemented fix." },
+  });
+  assert.match(reviewPrompt.prompt, /Available handoff routes: Build \(revise\), Approval \(pass\)/);
+  assert.match(reviewPrompt.prompt, /DECISION: pass/);
+
+  const approvalPrompt = teams.composeTeamStepPrompt({
+    teamId: team.id,
+    stepId: approval.id,
+    task: "Fix app startup",
+    previousOutputs: { [review.id]: "QA passed." },
+  });
+  assert.match(approvalPrompt.prompt, /final approval\/output node/);
+  assert.match(approvalPrompt.prompt, /DECISION: approve/);
+  assert.match(approvalPrompt.prompt, /Build \(reject\)/);
 });

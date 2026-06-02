@@ -28,6 +28,7 @@ export function openSettings(tab) {
 export function renderSettingsTab() {
   $("#settingsTabs").querySelectorAll(".stab").forEach(b => b.classList.toggle("is-active", b.dataset.tab === state.panel));
   settingsBody.innerHTML = "";
+  settingsBody.classList.toggle("is-teams-builder", state.panel === "teams");
   const titles = { providers: "Provider 管理", teams: "Teams 工作流", identities: "身份与协作", skills: "Skills 管理", mcp: "MCP 服务", plugins: "插件", runners: "Runner 管理", usage: "用量统计", diagnostics: "诊断", general: "通用设置" };
   $("#settingsTitle").textContent = titles[state.panel] || "设置";
 

@@ -67,7 +67,9 @@ function normalizeStep(step = {}, index = 0) {
     id: text(step.id) || randomUUID(),
     name: text(step.name, `Step ${index + 1}`),
     memberId: text(step.memberId),
+    nodeType: text(step.nodeType, "work") || "work",
     instruction: text(step.instruction),
+    decisionInstruction: text(step.decisionInstruction),
     requiresApproval: bool(step.requiresApproval, true),
     inputMode: text(step.inputMode, "task-and-previous") || "task-and-previous",
     x: number(step.x, 80 + (index % 4) * 220),
@@ -82,6 +84,7 @@ function normalizeEdge(edge = {}) {
     id: text(edge.id) || randomUUID(),
     from: text(edge.from),
     to: text(edge.to),
+    condition: text(edge.condition, "default") || "default",
     label: text(edge.label),
     createdAt: Number(edge.createdAt || now()),
     updatedAt: Number(edge.updatedAt || edge.createdAt || now()),
@@ -214,7 +217,7 @@ export function updateTeamStep(teamId, stepId, updates = {}) {
   const team = findTeam(store, teamId);
   const step = team.workflow.find(item => item.id === stepId);
   if (!step) throw new Error("Workflow step not found");
-  for (const key of ["name", "memberId", "instruction", "inputMode"]) {
+  for (const key of ["name", "memberId", "nodeType", "instruction", "decisionInstruction", "inputMode"]) {
     if (updates[key] !== undefined) step[key] = text(updates[key]);
   }
   if (updates.x !== undefined) step.x = number(updates.x, step.x);
@@ -280,21 +283,28 @@ export function composeTeamStepPrompt({ teamId, stepId, task = "", previousOutpu
     .join("\n\n");
   const nextSteps = (team.workflowEdges || [])
     .filter(edge => edge.from === stepId)
-    .map(edge => team.workflow.find(item => item.id === edge.to))
-    .filter(Boolean);
+    .map(edge => ({ edge, step: team.workflow.find(item => item.id === edge.to) }))
+    .filter(item => item.step);
+  const nextLabel = nextSteps
+    .map(item => `${item.step.name}${item.edge.condition && item.edge.condition !== "default" ? ` (${item.edge.condition})` : ""}`)
+    .join(", ");
   const lines = [
     `You are working as the team member: ${member?.name || "Unassigned member"}.`,
     member?.role ? `Role: ${member.role}` : "",
     team.rules ? `Team rules:\n${team.rules}` : "",
     member?.rules ? `Member rules:\n${member.rules}` : "",
     `Current workflow step: ${step.name}`,
+    `Step type: ${step.nodeType || "work"}`,
     step.instruction ? `Step instruction:\n${step.instruction}` : "",
+    step.decisionInstruction ? `Decision instruction:\n${step.decisionInstruction}` : "",
     task ? `User task:\n${task}` : "",
     prior ? `Previous accepted outputs:\n${prior}` : "",
-    nextSteps.length ? `After this step, hand off to: ${nextSteps.map(item => item.name).join(", ")}.` : "This is the final mapped step. Produce a final, user-facing answer when ready.",
+    step.id === team.finalStepId ? "This is the final approval/output node. If the result is ready for the user, produce the formal user-facing answer and include DECISION: approve. If it must be reworked, explain why and include DECISION: reject." : "",
+    nextSteps.length ? `Available handoff routes: ${nextLabel}.` : "This is the final mapped step. Produce a final, user-facing answer when ready.",
+    nextSteps.some(item => item.edge.condition !== "default") ? "If this step is deciding a route, include a final line exactly like: DECISION: pass, DECISION: revise, DECISION: approve, or DECISION: reject." : "",
     "Return only the useful deliverable for this step. If something is missing, state the blocker clearly.",
   ].filter(Boolean);
-  return { team, step, member, nextSteps, prompt: lines.join("\n\n") };
+  return { team, step, member, nextSteps: nextSteps.map(item => item.step), nextEdges: nextSteps.map(item => item.edge), prompt: lines.join("\n\n") };
 }
 
 export const testExports = { normalizeTeam, normalizeMember, normalizeStep, normalizeEdge };

@@ -140,6 +140,10 @@ function installFakeBridge() {
   };
 }
 
+function collectHtml(node) {
+  return [node.innerHTML || "", ...(node.children || []).map(collectHtml)].join("\n");
+}
+
 installFakeDom();
 
 test("bootstrap binds every configure call it uses", () => {
@@ -278,9 +282,10 @@ test("teams settings renders user-defined members and workflow steps", async () 
 
   renderTeamsSettings({ settingsBody, renderSettingsTab() {} });
 
-  assert.match(settingsBody.children.map(child => child.innerHTML).join("\n"), /WorkBuddy/);
-  assert.match(settingsBody.children.map(child => child.innerHTML).join("\n"), /Reviewer/);
-  assert.match(settingsBody.children.map(child => child.innerHTML).join("\n"), /Review/);
+  const html = collectHtml(settingsBody);
+  assert.match(html, /WorkBuddy/);
+  assert.match(html, /Reviewer/);
+  assert.match(html, /Review/);
 });
 
 test("tauri bridge exposes teams workflow methods", () => {
