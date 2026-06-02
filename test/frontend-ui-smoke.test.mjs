@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
+import vm from "node:vm";
 
 class FakeClassList {
   constructor() { this.values = new Set(); }
@@ -277,4 +278,32 @@ test("teams settings renders user-defined members and workflow steps", async () 
   assert.match(settingsBody.children.map(child => child.innerHTML).join("\n"), /WorkBuddy/);
   assert.match(settingsBody.children.map(child => child.innerHTML).join("\n"), /Reviewer/);
   assert.match(settingsBody.children.map(child => child.innerHTML).join("\n"), /Review/);
+});
+
+test("tauri bridge exposes teams workflow methods", () => {
+  const source = fs.readFileSync("public/tauri-bridge.js", "utf8");
+  const window = {
+    __TAURI__: {
+      core: { invoke: async () => ({ ok: true }) },
+      event: { listen: async () => () => {} },
+    },
+  };
+
+  vm.runInNewContext(source, { window, Promise });
+
+  for (const method of [
+    "listTeams",
+    "createTeam",
+    "updateTeam",
+    "deleteTeam",
+    "createTeamMember",
+    "updateTeamMember",
+    "deleteTeamMember",
+    "createTeamStep",
+    "updateTeamStep",
+    "deleteTeamStep",
+    "composeTeamStepPrompt",
+  ]) {
+    assert.equal(typeof window.agentBridge[method], "function", method);
+  }
 });
