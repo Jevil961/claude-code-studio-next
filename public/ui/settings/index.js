@@ -17,12 +17,29 @@ export function configure(d) { deps = d; }
 
 export const settingsPage = $("#settingsPage");
 export const settingsBody = $("#settingsBody");
+export const teamsPage = $("#teamsPage");
+export const teamsBuilderBody = $("#teamsBuilderBody");
 
 export function openSettings(tab) {
+  teamsPage?.classList.remove("is-open");
   settingsPage.classList.add("is-open");
   state.panel = tab || "providers";
   save();
   renderSettingsTab();
+}
+
+export function openTeamsBuilder() {
+  settingsPage.classList.remove("is-open");
+  teamsPage.classList.add("is-open");
+  state.panel = "teams";
+  save();
+  renderTeamsBuilder();
+}
+
+export function renderTeamsBuilder() {
+  if (!teamsBuilderBody) return;
+  teamsBuilderBody.innerHTML = "";
+  renderTeamsSettings({ settingsBody: teamsBuilderBody, renderSettingsTab: renderTeamsBuilder, ...deps });
 }
 
 export function renderSettingsTab() {
@@ -48,6 +65,7 @@ export function renderSettingsTab() {
 
 export function initSettings() {
   $("#settingsBack").addEventListener("click", () => settingsPage.classList.remove("is-open"));
+  $("#teamsBack")?.addEventListener("click", () => teamsPage.classList.remove("is-open"));
   $("#settingsTabs").addEventListener("click", e => {
     const btn = e.target.closest(".stab[data-tab]");
     if (!btn) return;

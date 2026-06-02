@@ -124,18 +124,20 @@ test("teams support conditional review loops and final approval prompts", async 
     name: "Approval",
     nodeType: "approval",
     memberId: pm.id,
-    decisionInstruction: "Use DECISION: approve or DECISION: reject.",
+    decisionInstruction: "Use DECISION: yes or DECISION: no.",
   }).step;
+  const output = teams.createTeamStep(team.id, { name: "Output", nodeType: "final", memberId: pm.id }).step;
 
   teams.updateTeamWorkflow(team.id, {
     entryStepId: intake.id,
-    finalStepId: approval.id,
+    finalStepId: output.id,
     workflowEdges: [
       { from: intake.id, to: build.id, condition: "default" },
       { from: build.id, to: review.id, condition: "default" },
       { from: review.id, to: build.id, condition: "revise" },
       { from: review.id, to: approval.id, condition: "pass" },
-      { from: approval.id, to: build.id, condition: "reject" },
+      { from: approval.id, to: output.id, condition: "yes" },
+      { from: approval.id, to: review.id, condition: "no" },
     ],
   });
 
@@ -154,7 +156,15 @@ test("teams support conditional review loops and final approval prompts", async 
     task: "Fix app startup",
     previousOutputs: { [review.id]: "QA passed." },
   });
-  assert.match(approvalPrompt.prompt, /final approval\/output node/);
-  assert.match(approvalPrompt.prompt, /DECISION: approve/);
-  assert.match(approvalPrompt.prompt, /Build \(reject\)/);
+  assert.match(approvalPrompt.prompt, /DECISION: yes/);
+  assert.match(approvalPrompt.prompt, /Output \(yes\)/);
+  assert.match(approvalPrompt.prompt, /Review \(no\)/);
+
+  const outputPrompt = teams.composeTeamStepPrompt({
+    teamId: team.id,
+    stepId: output.id,
+    task: "Fix app startup",
+    previousOutputs: { [approval.id]: "Approved. DECISION: yes" },
+  });
+  assert.match(outputPrompt.prompt, /final approval\/output node/);
 });

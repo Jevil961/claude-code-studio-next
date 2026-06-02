@@ -7,6 +7,14 @@ import { loadIdentities, loadProviders, loadTeams } from "../data-loader.js";
 
 const NODE_W = 190;
 const NODE_H = 96;
+const COMPONENTS = [
+  { type: "start", name: "开始", icon: "S", instruction: "接收右侧任务输入，并交给第一位处理身份。" },
+  { type: "intake", name: "身份处理", icon: "ID", instruction: "接收上游输入，按身份规则处理后交接给下一个节点。" },
+  { type: "work", name: "执行任务", icon: "WK", instruction: "根据上游要求完成执行、修改或实现，并输出交接说明。" },
+  { type: "review", name: "测试判断", icon: "QA", instruction: "检查上游结果。满意输出 DECISION: pass；不满意输出 DECISION: revise。" },
+  { type: "approval", name: "审核判断", icon: "OK", instruction: "审核结果是否可交付。通过输出 DECISION: approve；不通过输出 DECISION: reject。" },
+  { type: "final", name: "输出结果", icon: "OUT", instruction: "形成给用户的最终结果或交付摘要。" },
+];
 
 function selectedTeam() {
   return data.teams.find(team => team.id === state.selectedTeamId) || data.teams[0] || null;
@@ -23,11 +31,13 @@ function conditionLabel(condition = "default") {
     revise: "返工",
     approve: "批准",
     reject: "驳回",
+    yes: "Yes",
+    no: "No",
   }[condition] || condition;
 }
 
 function conditionOptions(value = "default") {
-  return ["default", "revise", "pass", "approve", "reject"].map(condition => ({
+  return ["default", "yes", "no", "revise", "pass", "approve", "reject"].map(condition => ({
     value: condition,
     label: conditionLabel(condition),
     selected: condition === value,
@@ -36,6 +46,7 @@ function conditionOptions(value = "default") {
 
 function nodeTypeOptions(value = "work") {
   return [
+    ["start", "开始"],
     ["intake", "入口澄清"],
     ["work", "执行处理"],
     ["review", "评审测试"],
@@ -49,7 +60,7 @@ function outgoingEdges(team, stepId) {
 }
 
 function decisionFromText(text) {
-  const match = String(text || "").match(/DECISION\s*[:：]\s*(pass|revise|approve|reject|default)/i);
+  const match = String(text || "").match(/DECISION\s*[:：]\s*(yes|no|pass|revise|approve|reject|default)/i);
   return match ? match[1].toLowerCase() : "";
 }
 
@@ -168,6 +179,21 @@ async function prepareNode(team, step, deps) {
   run.updatedAt = Date.now();
   save();
 
+  if (step.nodeType === "start") {
+    const next = nextSteps(team, step.id)[0];
+    if (!next) {
+      toast("开始节点还没有连到下一步", "error");
+      deps.renderSettingsTab();
+      return;
+    }
+    run.currentStepId = next.id;
+    run.updatedAt = Date.now();
+    save();
+    toast(`从开始进入：${next.name}`, "success");
+    await prepareNode(team, next, deps);
+    return;
+  }
+
   const r = await safeBridge("composeTeamStepPrompt", null, {
     teamId: team.id,
     stepId: step.id,
@@ -202,7 +228,7 @@ async function acceptAndHandoff(team, deps) {
   const edges = outgoingEdges(team, step.id);
   const decision = decisionFromText(output);
   let nextEdge = null;
-  if (step.id === team.finalStepId && ["approve", "pass"].includes(decision)) {
+  if (step.id === team.finalStepId && ["approve", "pass", "yes"].includes(decision)) {
     nextEdge = null;
   } else if (edges.length === 1) {
     nextEdge = edges[0];
@@ -307,11 +333,18 @@ async function createPmDevQaTemplate(renderSettingsTab) {
     await refresh(renderSettingsTab);
     return;
   }
+  const start = await safeBridge("createTeamStep", null, teamId, {
+    name: "开始",
+    nodeType: "start",
+    x: 60,
+    y: 150,
+    instruction: "从右侧任务输入开始，把用户原始问题交给项目经理。",
+  });
   const intake = await safeBridge("createTeamStep", null, teamId, {
     name: "需求澄清",
     nodeType: "intake",
     memberId: pm.data.member.id,
-    x: 80,
+    x: 280,
     y: 150,
     instruction: "接收用户原始问题，不要求用户懂怎么分配。把问题转成清晰需求、范围、约束和验收标准，然后交给开发。",
   });
@@ -319,7 +352,7 @@ async function createPmDevQaTemplate(renderSettingsTab) {
     name: "开发实现",
     nodeType: "work",
     memberId: dev.data.member.id,
-    x: 340,
+    x: 500,
     y: 150,
     instruction: "根据上游需求或测试返工意见完成实现/修改。输出改动点、关键文件、验证方式和仍需测试关注的风险。",
   });
@@ -327,7 +360,7 @@ async function createPmDevQaTemplate(renderSettingsTab) {
     name: "测试验收",
     nodeType: "review",
     memberId: qa.data.member.id,
-    x: 600,
+    x: 720,
     y: 150,
     instruction: "验证开发输出是否满足验收标准。发现问题就给开发可执行返工意见；满意才允许通过。",
     decisionInstruction: "如果仍需开发修改，最后一行输出 DECISION: revise。如果测试满意，最后一行输出 DECISION: pass。",
@@ -336,25 +369,35 @@ async function createPmDevQaTemplate(renderSettingsTab) {
     name: "项目审核",
     nodeType: "approval",
     memberId: pm.data.member.id,
-    x: 860,
+    x: 940,
     y: 150,
-    instruction: "审核测试通过后的结果是否真正解决用户问题。通过则形成给用户的正式交付说明，不通过则给开发返工意见。",
-    decisionInstruction: "如果可交付，最后一行输出 DECISION: approve。如果仍需返工，最后一行输出 DECISION: reject。",
+    instruction: "审核测试通过后的结果是否真正解决用户问题。通过则交给输出结果节点，不通过则退回测试补充建议。",
+    decisionInstruction: "如果可交付，最后一行输出 DECISION: yes。如果仍需补充测试或返工，最后一行输出 DECISION: no。",
   });
-  if (!intake.ok || !build.ok || !test.ok || !audit.ok) {
+  const output = await safeBridge("createTeamStep", null, teamId, {
+    name: "输出结果",
+    nodeType: "final",
+    memberId: pm.data.member.id,
+    x: 1160,
+    y: 150,
+    instruction: "把项目经理审核通过的结果整理成给用户的正式答复，只输出最终结论、变更摘要和验证状态。",
+  });
+  if (!start.ok || !intake.ok || !build.ok || !test.ok || !audit.ok || !output.ok) {
     toast("模板节点创建失败", "error");
     await refresh(renderSettingsTab);
     return;
   }
   await safeBridge("updateTeamWorkflow", null, teamId, {
-    entryStepId: intake.data.step.id,
-    finalStepId: audit.data.step.id,
+    entryStepId: start.data.step.id,
+    finalStepId: output.data.step.id,
     workflowEdges: [
+      { from: start.data.step.id, to: intake.data.step.id, condition: "default", label: "开始交给项目经理" },
       { from: intake.data.step.id, to: build.data.step.id, condition: "default", label: "需求交给开发" },
       { from: build.data.step.id, to: test.data.step.id, condition: "default", label: "开发完成交给测试" },
       { from: test.data.step.id, to: build.data.step.id, condition: "revise", label: "测试不满意返工" },
       { from: test.data.step.id, to: audit.data.step.id, condition: "pass", label: "测试满意进入项目审核" },
-      { from: audit.data.step.id, to: build.data.step.id, condition: "reject", label: "项目审核不通过返工" },
+      { from: audit.data.step.id, to: output.data.step.id, condition: "yes", label: "项目经理审核通过" },
+      { from: audit.data.step.id, to: test.data.step.id, condition: "no", label: "项目经理不满意，回到测试补充" },
     ],
   });
   state.selectedTeamId = teamId;
@@ -431,6 +474,35 @@ async function nodeDlg(team, step, renderSettingsTab) {
   else toast(r.error || "保存失败", "error");
 }
 
+async function addNodeFromComponent(team, type, position, renderSettingsTab) {
+  const component = COMPONENTS.find(item => item.type === type) || COMPONENTS[1];
+  const r = await safeBridge("createTeamStep", null, team.id, {
+    name: component.name,
+    nodeType: component.type,
+    memberId: "",
+    instruction: component.instruction,
+    decisionInstruction: component.type === "review"
+      ? "满意时输出 DECISION: pass；不满意时输出 DECISION: revise。"
+      : component.type === "approval"
+        ? "通过时输出 DECISION: approve；不通过时输出 DECISION: reject。"
+        : "",
+    x: position?.x ?? 120 + team.workflow.length * 48,
+    y: position?.y ?? 120 + team.workflow.length * 36,
+  });
+  if (!r.ok) {
+    toast(r.error || "添加组件失败", "error");
+    return;
+  }
+  if (component.type === "start") {
+    await safeBridge("updateTeamWorkflow", null, team.id, { entryStepId: r.data.step.id });
+  }
+  if (component.type === "final") {
+    await safeBridge("updateTeamWorkflow", null, team.id, { finalStepId: r.data.step.id });
+  }
+  toast(`已添加组件：${component.name}`, "success");
+  await refresh(renderSettingsTab);
+}
+
 async function deleteNodeDlg(team, step, renderSettingsTab) {
   if (!await showConfirm("删除节点", `确定删除“${step.name}”？相关连线也会删除。`)) return;
   const r = await safeBridge("deleteTeamStep", null, team.id, step.id);
@@ -503,6 +575,32 @@ function renderTeamList({ settingsBody, renderSettingsTab }) {
   }
 }
 
+function renderComponentPalette(team, deps) {
+  const { settingsBody, renderSettingsTab } = deps;
+  const card = document.createElement("div");
+  card.className = "scard";
+  card.innerHTML = `
+    <div class="scard-head"><span class="scard-title">组件</span></div>
+    <div class="slist-sub" style="white-space:normal;margin-bottom:8px;">点击组件添加到画布，或拖到中间画布的具体位置。</div>
+    <div class="team-component-grid">
+      ${COMPONENTS.map(item => `
+        <button class="team-component" draggable="true" data-type="${item.type}" type="button">
+          <b>${escapeHtml(item.icon)} ${escapeHtml(item.name)}</b>
+          <span>${escapeHtml(item.instruction)}</span>
+        </button>
+      `).join("")}
+    </div>
+  `;
+  for (const btn of card.querySelectorAll(".team-component")) {
+    btn.addEventListener("click", () => addNodeFromComponent(team, btn.dataset.type, null, renderSettingsTab));
+    btn.addEventListener("dragstart", event => {
+      event.dataTransfer?.setData("text/team-node-type", btn.dataset.type);
+      event.dataTransfer?.setData("text/plain", btn.dataset.type);
+    });
+  }
+  settingsBody.append(card);
+}
+
 function renderHeader(team, deps) {
   const { settingsBody, renderSettingsTab } = deps;
   const run = runState(team.id);
@@ -511,33 +609,90 @@ function renderHeader(team, deps) {
   header.className = "scard";
   header.innerHTML = `
     <div class="scard-head">
-      <span class="scard-title">${escapeHtml(team.name)}</span>
+      <span class="scard-title">运行任务</span>
       <div class="scard-actions">
-        <button class="st-btn t-btn--link" id="teamTaskBtn">问题</button>
+        <button class="st-btn t-btn--link" id="startFlowBtn">从开始运行</button>
         <button class="st-btn t-btn--primary t-btn--sm" id="runCurrentBtn">交给当前身份</button>
         <button class="st-btn t-btn--link" id="acceptOutputBtn">采纳并交接</button>
         <button class="st-btn t-btn--link" id="resetRunBtn">重来</button>
         <button class="st-btn t-btn--link" id="editTeamBtn">编辑</button>
       </div>
     </div>
-    <div class="slist-sub">${escapeHtml(team.description || "先创建身份，再拖拽节点绘制脑图；连线决定问题如何交接。")}</div>
-    <div class="slist-sub" style="margin-top:4px;">当前问题：${escapeHtml(run.task || "未设置")} · 当前身份：${escapeHtml(current?.name || "未选择")} ${run.completed ? "· 已到最终输出" : ""}</div>
+    <textarea class="team-task-input" id="teamTaskInput" placeholder="在这里输入任务。工作流会从 Start/入口节点开始交给对应身份处理。">${escapeHtml(run.task || "")}</textarea>
+    <div class="slist-sub" style="margin-top:8px;white-space:normal;">当前节点：${escapeHtml(current?.name || "未选择")} ${run.completed ? "· 已完成" : ""}</div>
+    <div class="slist-sub" style="margin-top:4px;white-space:normal;">${escapeHtml(team.description || "左侧拖组件，中间连线，右侧输入任务并运行。")}</div>
   `;
   settingsBody.append(header);
-  header.querySelector("#teamTaskBtn").addEventListener("click", async () => {
-    const result = await showModal("Team 问题", [{ key: "task", label: "问题", value: run.task || "", type: "textarea" }]);
-    if (!result) return;
-    run.task = result.task || "";
-    run.currentStepId = activeStepId(team);
+  header.querySelector("#teamTaskInput").addEventListener("input", event => {
+    run.task = event.currentTarget.value || "";
+    run.updatedAt = Date.now();
+    save();
+  });
+  header.querySelector("#startFlowBtn").addEventListener("click", () => {
+    const entry = stepById(team, team.entryStepId) || team.workflow[0];
+    if (!entry) {
+      toast("请先在画布添加 Start 或入口节点", "error");
+      return;
+    }
+    run.currentStepId = entry.id;
+    run.outputs = {};
     run.completed = false;
     run.updatedAt = Date.now();
     save();
-    renderSettingsTab();
+    prepareNode(team, entry, deps);
   });
   header.querySelector("#runCurrentBtn").addEventListener("click", () => current ? prepareNode(team, current, deps) : toast("请先添加并选择节点", "error"));
   header.querySelector("#acceptOutputBtn").addEventListener("click", () => acceptAndHandoff(team, deps));
   header.querySelector("#resetRunBtn").addEventListener("click", () => resetRun(team, renderSettingsTab));
   header.querySelector("#editTeamBtn").addEventListener("click", () => editTeamDlg(team, renderSettingsTab));
+}
+
+function renderNodeInspector(team, deps) {
+  const { settingsBody, renderSettingsTab } = deps;
+  const step = stepById(team, activeStepId(team));
+  const card = document.createElement("div");
+  card.className = "scard";
+  if (!step) {
+    card.innerHTML = `<div class="scard-head"><span class="scard-title">节点配置</span></div><div class="slist-sub">在画布中选择一个节点进行配置。</div>`;
+    settingsBody.append(card);
+    return;
+  }
+  card.innerHTML = `
+    <div class="scard-head">
+      <span class="scard-title">节点配置</span>
+      <div class="scard-actions">
+        <button class="st-btn t-btn--link" id="markEntryBtn">设为开始</button>
+        <button class="st-btn t-btn--link" id="markFinalBtn">设为输出</button>
+        <button class="st-btn t-btn--primary t-btn--sm" id="saveNodeConfigBtn">保存</button>
+      </div>
+    </div>
+    <label class="slist-sub" style="display:block;white-space:normal;margin-top:8px;">名称</label>
+    <input class="team-config-input" id="nodeNameInput" value="${escapeHtml(step.name || "")}">
+    <label class="slist-sub" style="display:block;white-space:normal;margin-top:8px;">组件类型</label>
+    <select class="team-config-select" id="nodeTypeSelect">${nodeTypeOptions(step.nodeType || "work").map(option => `<option value="${option.value}" ${option.selected ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}</select>
+    <label class="slist-sub" style="display:block;white-space:normal;margin-top:8px;">身份</label>
+    <select class="team-config-select" id="nodeMemberSelect">${memberOptions(team, step.memberId || "").map(option => `<option value="${option.value}" ${option.selected ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}</select>
+    <label class="slist-sub" style="display:block;white-space:normal;margin-top:8px;">任务/处理说明</label>
+    <textarea class="team-config-textarea" id="nodeInstructionInput">${escapeHtml(step.instruction || "")}</textarea>
+    <label class="slist-sub" style="display:block;white-space:normal;margin-top:8px;">判断/路由说明</label>
+    <textarea class="team-config-textarea" id="nodeDecisionInput" placeholder="例如：满意输出 DECISION: pass，不满意输出 DECISION: revise">${escapeHtml(step.decisionInstruction || "")}</textarea>
+  `;
+  settingsBody.append(card);
+  card.querySelector("#markEntryBtn").addEventListener("click", () => markNode(team, step, "entryStepId", renderSettingsTab));
+  card.querySelector("#markFinalBtn").addEventListener("click", () => markNode(team, step, "finalStepId", renderSettingsTab));
+  card.querySelector("#saveNodeConfigBtn").addEventListener("click", async () => {
+    const r = await safeBridge("updateTeamStep", null, team.id, step.id, {
+      name: card.querySelector("#nodeNameInput").value,
+      nodeType: card.querySelector("#nodeTypeSelect").value,
+      memberId: card.querySelector("#nodeMemberSelect").value,
+      instruction: card.querySelector("#nodeInstructionInput").value,
+      decisionInstruction: card.querySelector("#nodeDecisionInput").value,
+    });
+    if (r.ok) {
+      toast("节点配置已保存", "success");
+      await refresh(renderSettingsTab);
+    } else toast(r.error || "节点保存失败", "error");
+  });
 }
 
 function renderMindmap(team, deps) {
@@ -559,6 +714,19 @@ function renderMindmap(team, deps) {
   const canvas = document.createElement("div");
   canvas.className = "team-map-canvas";
   canvas.style.cssText = "position:relative;height:560px;margin-top:10px;overflow:auto;border:1px solid var(--td-border-level-2-color);background:var(--td-bg-color-container);border-radius:8px;";
+  canvas.addEventListener("dragover", event => {
+    if (event.dataTransfer?.types?.includes("text/team-node-type")) event.preventDefault();
+  });
+  canvas.addEventListener("drop", event => {
+    const type = event.dataTransfer?.getData("text/team-node-type") || event.dataTransfer?.getData("text/plain");
+    if (!type) return;
+    event.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    addNodeFromComponent(team, type, {
+      x: Math.max(20, event.clientX - rect.left + canvas.scrollLeft),
+      y: Math.max(20, event.clientY - rect.top + canvas.scrollTop),
+    }, renderSettingsTab);
+  });
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("width", "1200");
   svg.setAttribute("height", "760");
@@ -727,9 +895,11 @@ function renderTeamDetail(team, deps) {
   workbench.append(left, center, right);
   settingsBody.append(workbench);
   renderTeamList({ ...deps, settingsBody: left });
+  renderComponentPalette(team, { ...deps, settingsBody: left });
   renderMembers(team, { ...deps, settingsBody: left });
   renderMindmap(team, { ...deps, settingsBody: center });
   renderHeader(team, { ...deps, settingsBody: right });
+  renderNodeInspector(team, { ...deps, settingsBody: right });
   renderEdges(team, { ...deps, settingsBody: right });
 }
 

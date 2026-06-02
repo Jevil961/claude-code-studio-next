@@ -7,7 +7,7 @@ import { configure as configureMessages, renderMessages, addAttachments, renderA
 import { configure as configureProjectNav, renderProjects, selectProject, renderConvs, selectSession, loadSession, recoverMissingSession, validateActiveSession } from "./project-nav.js";
 import { configure as configureSearch, openSearchPanel, closeSearchPanel, renderSearchResults } from "./search.js";
 import { configure as configureDropdowns, closeAllDropdowns, populateIdentitiesSubmenu, populateModelDropdown, updateModelLabel, initDropdowns } from "./dropdowns.js";
-import { configure as configureSettings, openSettings, renderSettingsTab, settingsPage, settingsBody, initSettings } from "./settings/index.js";
+import { configure as configureSettings, openSettings, openTeamsBuilder, renderSettingsTab, settingsPage, settingsBody, teamsPage, initSettings } from "./settings/index.js";
 import { configure as configureSetup, claudeSetupState, getClaudeSetupState, handleClaudeDetectResult, initSetup } from "./setup.js";
 import { configure as configureChatEngine, setMode, setPerm, setRunning, autosize, onClaudeEvent, onClaudeStderr, onClaudeDone, handleAskUser, currentRunId, getCurrentRunId, initChatEngine } from "./chat-engine.js";
 import { switchIdentity as switchIdentitySetting } from "./settings/identities.js";
@@ -220,7 +220,8 @@ export function initApp() {
   brandDropdown?.querySelectorAll("[data-tab]").forEach(item => {
     item.addEventListener("click", () => {
       brandDropdown.classList.remove("is-open");
-      openSettings(item.dataset.tab);
+      if (item.dataset.tab === "teams") openTeamsBuilder();
+      else openSettings(item.dataset.tab);
     });
   });
 
@@ -265,7 +266,7 @@ export function initApp() {
 
   // Quick actions
   $("#pluginsBtn")?.addEventListener("click", async () => { await loadPlugins(); openSettings("plugins"); });
-  $("#teamsBtn")?.addEventListener("click", () => openSettings("teams"));
+  $("#teamsBtn")?.addEventListener("click", openTeamsBuilder);
   $("#refreshIndexBtn")?.addEventListener("click", () => throttledRefresh(true));
 
   // Add folder button
@@ -290,6 +291,7 @@ export function initApp() {
 
   // Keyboard shortcuts
   document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && teamsPage?.classList.contains("is-open")) { teamsPage.classList.remove("is-open"); return; }
     if (e.key === "Escape" && settingsPage.classList.contains("is-open")) { settingsPage.classList.remove("is-open"); return; }
     if (e.key === "Escape" && getCurrentRunId() && bridge?.stopClaude) { bridge.stopClaude(getCurrentRunId()); setRunning(false); return; }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n") { e.preventDefault(); newChat(); }

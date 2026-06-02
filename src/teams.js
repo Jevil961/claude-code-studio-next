@@ -301,7 +301,7 @@ export function composeTeamStepPrompt({ teamId, stepId, task = "", previousOutpu
     prior ? `Previous accepted outputs:\n${prior}` : "",
     step.id === team.finalStepId ? "This is the final approval/output node. If the result is ready for the user, produce the formal user-facing answer and include DECISION: approve. If it must be reworked, explain why and include DECISION: reject." : "",
     nextSteps.length ? `Available handoff routes: ${nextLabel}.` : "This is the final mapped step. Produce a final, user-facing answer when ready.",
-    nextSteps.some(item => item.edge.condition !== "default") ? "If this step is deciding a route, include a final line exactly like: DECISION: pass, DECISION: revise, DECISION: approve, or DECISION: reject." : "",
+    nextSteps.some(item => item.edge.condition !== "default") ? "If this step is deciding a route, include a final line exactly like: DECISION: yes, DECISION: no, DECISION: pass, DECISION: revise, DECISION: approve, or DECISION: reject." : "",
     "Return only the useful deliverable for this step. If something is missing, state the blocker clearly.",
   ].filter(Boolean);
   return { team, step, member, nextSteps: nextSteps.map(item => item.step), nextEdges: nextSteps.map(item => item.edge), prompt: lines.join("\n\n") };
