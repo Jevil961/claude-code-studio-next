@@ -303,6 +303,34 @@ test("opening the standalone teams builder refreshes teams before rendering", as
   assert.equal(settings.teamsPage.classList.contains("is-open"), true);
 });
 
+test("first-run wizard and help entry are wired into the shell", () => {
+  const html = fs.readFileSync("public/index.html", "utf8");
+  const bootstrap = fs.readFileSync("public/ui/bootstrap.js", "utf8");
+  const onboarding = fs.readFileSync("public/ui/onboarding.js", "utf8");
+
+  assert.match(html, /id="wizardOverlay"/);
+  assert.match(html, /id="helpBtn"/);
+  assert.match(bootstrap, /initOnboarding\(\)/);
+  assert.match(bootstrap, /openHelp/);
+  assert.match(onboarding, /openFirstRunWizard/);
+  assert.match(onboarding, /shouldShowFirstRun/);
+});
+
+test("core empty states include actionable guidance", () => {
+  const messages = fs.readFileSync("public/ui/messages.js", "utf8");
+  const projectNav = fs.readFileSync("public/ui/project-nav.js", "utf8");
+  const providers = fs.readFileSync("public/ui/settings/providers.js", "utf8");
+  const mcp = fs.readFileSync("public/ui/settings/mcp.js", "utf8");
+  const teams = fs.readFileSync("public/ui/settings/teams.js", "utf8");
+
+  assert.match(messages, /配置 Provider/);
+  assert.match(projectNav, /emptyAddProjectBtn/);
+  assert.match(projectNav, /emptyFocusPromptBtn/);
+  assert.match(providers, /emptyAddProviderBtn/);
+  assert.match(mcp, /emptyAddMcpBtn/);
+  assert.match(teams, /emptyTemplateTeamBtn/);
+});
+
 test("PM Dev QA template does not default team members into plan mode", () => {
   const source = fs.readFileSync("public/ui/settings/teams.js", "utf8");
   const templateSource = source.slice(

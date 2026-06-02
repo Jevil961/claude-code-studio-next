@@ -54,6 +54,7 @@
         <button class="model-option" data-tab="usage" type="button">用量统计</button>
         <button class="model-option" data-tab="diagnostics" type="button">诊断</button>
         <button class="model-option" data-tab="general" type="button">通用设置</button>
+        <button class="model-option" id="helpBtn" type="button">使用帮助</button>
       </div>
       <div class="topbar-actions">
         <button class="topbar-act" id="newChatBtn" type="button" title="新对话">
@@ -293,6 +294,30 @@
 
     <!-- Context Menu -->
     <div class="float-dropdown" id="ctxMenu" style="min-width:120px;"></div>
+
+    <!-- First-run wizard / Help -->
+    <div class="wizard-overlay" id="wizardOverlay">
+      <div class="wizard-box">
+        <div class="wizard-head">
+          <div>
+            <div class="wizard-kicker" id="wizardKicker">首次设置</div>
+            <div class="wizard-title" id="wizardTitle">欢迎使用 Claude Code Studio</div>
+          </div>
+          <button class="topbar-btn" id="wizardClose" type="button" title="关闭">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M5 5l6 6M11 5l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="wizard-steps" id="wizardSteps"></div>
+        <div class="wizard-body" id="wizardBody"></div>
+        <div class="wizard-foot">
+          <button class="st-btn t-btn--link" id="wizardSkip" type="button">稍后再说</button>
+          <div class="wizard-actions">
+            <button class="st-btn t-btn--link" id="wizardPrev" type="button">上一步</button>
+            <button class="st-btn t-btn--primary t-btn--sm" id="wizardNext" type="button">下一步</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Confirm -->
     <div class="modal-overlay" id="confirmOverlay">

@@ -10,6 +10,7 @@ import { configure as configureDropdowns, closeAllDropdowns, populateIdentitiesS
 import { configure as configureSettings, openSettings, openTeamsBuilder, renderSettingsTab, settingsPage, settingsBody, teamsPage, initSettings } from "./settings/index.js";
 import { configure as configureSetup, claudeSetupState, getClaudeSetupState, handleClaudeDetectResult, initSetup } from "./setup.js";
 import { configure as configureChatEngine, setMode, setPerm, setRunning, autosize, onClaudeEvent, onClaudeStderr, onClaudeDone, handleAskUser, currentRunId, getCurrentRunId, initChatEngine } from "./chat-engine.js";
+import { configure as configureOnboarding, initOnboarding, openHelp } from "./onboarding.js";
 import { switchIdentity as switchIdentitySetting } from "./settings/identities.js";
 import { switchProvider as switchProviderSetting } from "./settings/providers.js";
 
@@ -267,6 +268,7 @@ export function initApp() {
   // Quick actions
   $("#pluginsBtn")?.addEventListener("click", async () => { await loadPlugins(); openSettings("plugins"); });
   $("#teamsBtn")?.addEventListener("click", openTeamsBuilder);
+  $("#helpBtn")?.addEventListener("click", () => { closeAllDropdowns(); openHelp(); });
   $("#refreshIndexBtn")?.addEventListener("click", () => throttledRefresh(true));
 
   // Add folder button
@@ -318,6 +320,8 @@ export function initApp() {
   configureMessages({
     getCurrentRunId,
     renderArtifacts: () => import("./context-footer.js").then(m => m.renderArtifacts()),
+    openSettings,
+    openTeamsBuilder,
   });
   configureProjectNav({
     renderMessages, updateFooter, setMode, addTimeline,
@@ -347,6 +351,7 @@ export function initApp() {
     showSetupBanner: (result) => import("./setup.js").then(m => m.showSetupBanner(result)),
   });
   configureSetup({ boot });
+  configureOnboarding({ openSettings, openTeamsBuilder });
   configureChatEngine({
     switchProvider: (id) => switchProviderSetting(id, { renderSettingsTab, updateFooter, populateModelDropdown }),
     renderMessages, updateFooter, renderContextStack, renderAttachments, renderArtifacts: () => import("./context-footer.js").then(m => m.renderArtifacts()),
@@ -367,6 +372,7 @@ export function initApp() {
   initDropdowns();
   initSettings();
   initSetup();
+  initOnboarding();
   initChatEngine();
 
   // Boot

@@ -1011,10 +1011,18 @@ export function renderTeamsSettings(deps) {
   if (!data.teams.length) {
     renderTeamList(deps);
     const empty = document.createElement("div");
-    empty.className = "slist-sub";
-    empty.style.padding = "10px 2px";
-    empty.textContent = "Teams 是由用户绘制的身份脑图：先定义身份，再把身份节点连成问题交接流。";
+    empty.className = "scard";
+    empty.innerHTML = `
+      <div class="slist-name">还没有 Team 工作流</div>
+      <div class="slist-sub" style="white-space:normal;">Teams 是由用户绘制的身份脑图：先定义身份，再把身份节点连成问题交接流。可以从 PM-Dev-QA 模板开始。</div>
+      <div class="scard-actions" style="margin-top:10px;">
+        <button class="st-btn t-btn--primary t-btn--sm" id="emptyTemplateTeamBtn" type="button">创建 PM-Dev-QA 模板</button>
+        <button class="st-btn t-btn--link" id="emptyCreateTeamBtn" type="button">空白 Team</button>
+      </div>
+    `;
     settingsBody.append(empty);
+    empty.querySelector("#emptyTemplateTeamBtn").addEventListener("click", () => createPmDevQaTemplate(deps.renderSettingsTab));
+    empty.querySelector("#emptyCreateTeamBtn").addEventListener("click", () => createTeamDlg(deps.renderSettingsTab));
     return;
   }
 

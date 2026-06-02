@@ -17,7 +17,20 @@ export function renderMessages() {
   const transcript = $("#transcript");
   transcript.innerHTML = "";
   if (!state.messages.length) {
-    transcript.innerHTML = `<div class="empty-state"><b>Claude Code Studio</b><span>选择项目并输入任务开始对话</span></div>`;
+    transcript.innerHTML = `
+      <div class="empty-state">
+        <b>从一个项目任务开始</b>
+        <span>先选择左侧项目目录，再描述你希望 Claude Code 完成的工作。需要多人协作时，可打开 Teams 工作流。</span>
+        <div class="empty-actions">
+          <button class="st-btn t-btn--primary t-btn--sm" id="emptyFocusPrompt" type="button">输入任务</button>
+          <button class="st-btn t-btn--link" id="emptyOpenProviders" type="button">配置 Provider</button>
+          <button class="st-btn t-btn--link" id="emptyOpenTeams" type="button">打开 Teams</button>
+        </div>
+      </div>
+    `;
+    transcript.querySelector("#emptyFocusPrompt")?.addEventListener("click", () => $("#promptInput")?.focus());
+    transcript.querySelector("#emptyOpenProviders")?.addEventListener("click", () => deps.openSettings?.("providers"));
+    transcript.querySelector("#emptyOpenTeams")?.addEventListener("click", () => deps.openTeamsBuilder?.());
     return;
   }
   const tpl = $("#tplMessage");

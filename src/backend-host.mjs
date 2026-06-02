@@ -18,9 +18,11 @@ const { categorizeAllSkills, CATEGORIES } = await import("./skill-categories.js"
 const identities = await import("./identities.js");
 const teams = await import("./teams.js");
 const { PROVIDER_PRESETS, API_FORMATS } = await import("./provider-presets.js");
+const { assertInsidePath, safeReadTextFile, validatePluginInstallName } = await import("./path-security.js");
 
 let dbReady = false;
 let projectIndexRunning = false;
+const PLUGIN_ROOT = join(homedir(), ".claude", "plugins");
 
 async function ensureDb() {
   if (!dbReady) {
@@ -276,7 +278,10 @@ const handlers = {
     if (existsSync(path)) await import("./event-bus.js").then(m => m.openPathTarget(path));
     return { ok: true };
   },
-  readText: (path) => (!path || !existsSync(path)) ? { ok: false } : ok(readFileSync(path, "utf8")),
+  readText: (path) => {
+    if (!path || !existsSync(path)) return { ok: false };
+    return ok(safeReadTextFile(path));
+  },
   detectClaude: (path) => ok(claudeSetup.detectClaude(path)),
   getClaudeSetup: () => ok(claudeSetup.getConfig()),
   dismissSetup: () => ok(claudeSetup.dismissSetup()),
@@ -320,19 +325,19 @@ const handlers = {
     if (!sourcePath || !existsSync(sourcePath) || !statSync(sourcePath).isDirectory()) return fail("Please choose a plugin folder");
     const manifest = readPluginManifest(sourcePath);
     if (!manifest) return fail("Plugin manifest not found");
-    const targetRoot = join(homedir(), ".claude", "plugins");
+    const targetRoot = PLUGIN_ROOT;
     const pluginId = sanitizePluginId(manifest.id || manifest.name || sourcePath.split(/[\\/]/).filter(Boolean).pop());
     const target = join(targetRoot, pluginId);
+    assertInsidePath(targetRoot, target, "Plugin install target");
     if (sourcePath.toLowerCase() === target.toLowerCase()) return ok({ path: target, manifest, alreadyInstalled: true });
     mkdirSync(targetRoot, { recursive: true });
     cpSync(sourcePath, target, { recursive: true, force: true });
     return ok({ path: target, manifest, pluginId });
   },
   installPluginByName: async (pluginName) => {
-    if (!pluginName?.trim()) return fail("Plugin name is required");
     const claudePath = await runner.resolveClaude();
     if (!claudePath) return fail("Claude CLI not found");
-    const name = pluginName.trim();
+    const name = validatePluginInstallName(pluginName);
     return await new Promise(resolve => {
       execFile(claudePath, ["plugin", "install", name], { windowsHide: true, timeout: 45000, env: { ...process.env, NO_COLOR: "1" } }, (err, stdout, stderr) => {
         const output = String(stdout || "").trim();
@@ -344,7 +349,8 @@ const handlers = {
   },
   deletePlugin: (pluginPath) => {
     if (!pluginPath || !existsSync(pluginPath)) return fail("Plugin path does not exist");
-    rmSync(pluginPath, { recursive: true, force: true });
+    const safePath = assertInsidePath(PLUGIN_ROOT, pluginPath, "Plugin path");
+    rmSync(safePath, { recursive: true, force: true });
     return { ok: true };
   },
   listAutomations: async () => ok((await import("./db.js")).listAutomations()),

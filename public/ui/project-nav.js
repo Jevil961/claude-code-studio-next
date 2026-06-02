@@ -33,7 +33,12 @@ export function renderProjects() {
     node.addEventListener("click", () => selectProject(proj));
     list.append(node);
   }
-  if (!list.children.length) list.innerHTML = `<div style="padding:10px;color:var(--td-text-color-disabled);font-size:11px;text-align:center;">${initialLoadDone ? "暂无项目" : "加载中..."}</div>`;
+  if (!list.children.length) {
+    list.innerHTML = initialLoadDone
+      ? `<div class="mini-empty"><b>${term ? "没有匹配项目" : "还没有项目"}</b><span>${term ? "换个关键词，或添加新的项目目录。" : "添加一个代码目录后，Claude Code 才知道在哪里执行任务。"}</span><button class="st-btn t-btn--link t-btn--sm" id="emptyAddProjectBtn" type="button">添加项目</button></div>`
+      : `<div class="mini-empty"><b>正在加载项目</b><span>首次扫描可能需要一点时间。</span></div>`;
+    list.querySelector("#emptyAddProjectBtn")?.addEventListener("click", () => document.querySelector("#addFolderBtn")?.click());
+  }
 }
 
 export function selectProject(proj) {
@@ -87,7 +92,12 @@ export function renderConvs() {
     });
     list.append(node);
   }
-  if (!list.children.length) list.innerHTML = `<div style="padding:12px;color:var(--td-text-color-disabled);font-size:12px;text-align:center;">${initialLoadDone ? (proj ? "暂无对话" : "选择项目后显示") : "加载中..."}</div>`;
+  if (!list.children.length) {
+    list.innerHTML = initialLoadDone
+      ? `<div class="mini-empty"><b>${proj ? "还没有对话" : "先选择项目"}</b><span>${proj ? "从底部输入框提交第一个任务，对话会自动出现在这里。" : "选择或添加项目后，历史对话会按更新时间展示。"}</span>${proj ? '<button class="st-btn t-btn--link t-btn--sm" id="emptyFocusPromptBtn" type="button">开始任务</button>' : ""}</div>`
+      : `<div class="mini-empty"><b>正在加载对话</b><span>正在读取 Claude 项目索引。</span></div>`;
+    list.querySelector("#emptyFocusPromptBtn")?.addEventListener("click", () => document.querySelector("#promptInput")?.focus());
+  }
 }
 
 export function showConvContextMenu(e, session, proj) {

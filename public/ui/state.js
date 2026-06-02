@@ -24,7 +24,7 @@ function defaults() {
     selectedProject: "", selectedSession: "", selectedSessionPath: "",
     clientSessionKey: crypto.randomUUID(), pendingPlanPrompt: "",
     searchTerm: "", sessionMeta: {}, priceTable: {}, defaultCwd: "", customProjects: [], teamRuns: {},
-    density: "normal", diagnosticsLog: [], sidebarOpen: true, contextOpen: true,
+    density: "normal", diagnosticsLog: [], sidebarOpen: true, contextOpen: true, firstRunDone: false,
   };
 }
 

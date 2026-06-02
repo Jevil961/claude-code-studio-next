@@ -51,6 +51,7 @@ export function renderSettingsTab() {
   $("#settingsTitle").textContent = titles[state.panel] || "设置";
 
   const panelDeps = { settingsBody, renderSettingsTab, ...deps };
+  renderSettingsGuide(state.panel, settingsBody);
 
   if (state.panel === "providers") renderProvidersSettings(panelDeps);
   if (state.panel === "teams") renderTeamsSettings(panelDeps);
@@ -62,6 +63,63 @@ export function renderSettingsTab() {
   if (state.panel === "usage") renderUsageSettings(panelDeps);
   if (state.panel === "diagnostics") renderDiagSettings(panelDeps);
   if (state.panel === "general") renderGeneralSettings(panelDeps);
+}
+
+function renderSettingsGuide(tab, body) {
+  const copy = {
+    providers: ["Provider 是模型服务配置。先添加 API 地址、密钥和默认模型，再点击测试确认可用。", "添加 Provider"],
+    teams: ["Teams 是可视化身份工作流。先定义身份，再把节点连成需求、开发、测试、审核的交接流程。", "打开工作台"],
+    identities: ["身份是一组 Skills 能力集。切换身份会同步对应 Skills，让不同任务使用不同规则。", "自定义身份"],
+    skills: ["Skills 是可复用能力说明。先导入或扫描 Skills，再同步到 Claude Code。", "同步预览"],
+    mcp: ["MCP 服务为 Claude 提供外部工具。添加后建议先同步预览，再启用并同步。", "添加 MCP"],
+    plugins: ["插件扩展应用能力。可以从 marketplace 安装，也可以导入本地插件文件夹。", "安装插件"],
+    runners: ["Runner 管理当前 Claude Code 工作进程。任务卡住时可在这里查看并停止进程。", "刷新"],
+    usage: ["用量统计帮助你了解模型调用规模。后续会扩展趋势图、预算和导出。", "查看诊断"],
+    diagnostics: ["诊断页用于检查 Claude、项目、Skills、MCP 和运行时状态。", "生成报告"],
+    general: ["通用设置包含项目默认路径、运行策略和应用级偏好。", "打开帮助"],
+  }[tab];
+  if (!copy) return;
+  const guide = document.createElement("div");
+  guide.className = "settings-guide";
+  guide.innerHTML = `
+    <b>${titlesForGuide(tab)}</b>
+    <span>${copy[0]}</span>
+    <div class="scard-actions"><button class="st-btn t-btn--link" data-guide-action="${tab}" type="button">${copy[1]}</button></div>
+  `;
+  body.append(guide);
+  guide.querySelector("[data-guide-action]")?.addEventListener("click", () => {
+    const action = guide.querySelector("[data-guide-action]").dataset.guideAction;
+    if (action === "teams") openTeamsBuilder();
+    else if (action === "general") import("../onboarding.js").then(m => m.openHelp());
+    else if (action === "usage") openSettings("diagnostics");
+    else {
+      const targetId = {
+        providers: "addProviderBtn",
+        identities: "addIdBtn",
+        skills: "previewSkillsBtn",
+        mcp: "addMcpBtn",
+        plugins: "installPluginBtn",
+        runners: "refreshRunnersBtn",
+        diagnostics: "copyReportBtn",
+      }[action];
+      if (targetId) document.querySelector(`#${targetId}`)?.click();
+    }
+  });
+}
+
+function titlesForGuide(tab) {
+  return {
+    providers: "先配置模型服务",
+    teams: "用身份组成工作流",
+    identities: "把 Skills 组织成身份",
+    skills: "管理可复用能力",
+    mcp: "连接外部工具",
+    plugins: "安装扩展能力",
+    runners: "查看运行进程",
+    usage: "理解用量与成本",
+    diagnostics: "排查应用状态",
+    general: "应用级设置",
+  }[tab] || "设置说明";
 }
 
 export function initSettings() {

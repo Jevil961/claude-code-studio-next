@@ -12,6 +12,19 @@ export function renderProvidersSettings({ settingsBody, renderSettingsTab, updat
   settingsBody.append(header);
   header.querySelector("#addProviderBtn").addEventListener("click", () => createProviderDlg({ settingsBody, renderSettingsTab }));
 
+  if (!data.providers.length) {
+    const empty = document.createElement("div");
+    empty.className = "scard";
+    empty.innerHTML = `
+      <div class="slist-name">还没有 Provider</div>
+      <div class="slist-sub" style="white-space:normal;">Provider 是模型 API 配置。添加一个可用 Provider 后，首页模型按钮和任务运行才会有可用模型。</div>
+      <div class="scard-actions" style="margin-top:10px;"><button class="st-btn t-btn--primary t-btn--sm" id="emptyAddProviderBtn" type="button">添加 Provider</button></div>
+    `;
+    settingsBody.append(empty);
+    empty.querySelector("#emptyAddProviderBtn").addEventListener("click", () => createProviderDlg({ settingsBody, renderSettingsTab }));
+    return;
+  }
+
   for (const p of data.providers) {
     const card = document.createElement("div");
     card.className = `slist-item${p.current ? " is-active" : ""}`;

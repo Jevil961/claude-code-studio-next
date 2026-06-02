@@ -20,6 +20,23 @@ export function renderMcpSettings(deps) {
   header.querySelector("#addMcpBtn").addEventListener("click", () => addMcpDlg({ settingsBody, renderSettingsTab, loadMcp }));
   header.querySelector("#importMcpBtn").addEventListener("click", () => importMcp({ settingsBody, renderSettingsTab, loadMcp }));
 
+  if (!data.mcp.length) {
+    const empty = document.createElement("div");
+    empty.className = "scard";
+    empty.innerHTML = `
+      <div class="slist-name">还没有 MCP 服务</div>
+      <div class="slist-sub" style="white-space:normal;">MCP 能把文件系统、数据库、浏览器等外部工具接入 Claude。先添加配置 JSON，再同步到 Claude Code。</div>
+      <div class="scard-actions" style="margin-top:10px;">
+        <button class="st-btn t-btn--primary t-btn--sm" id="emptyAddMcpBtn" type="button">添加 MCP</button>
+        <button class="st-btn t-btn--link" id="emptyImportMcpBtn" type="button">导入 JSON</button>
+      </div>
+    `;
+    settingsBody.append(empty);
+    empty.querySelector("#emptyAddMcpBtn").addEventListener("click", () => addMcpDlg({ settingsBody, renderSettingsTab, loadMcp }));
+    empty.querySelector("#emptyImportMcpBtn").addEventListener("click", () => importMcp({ settingsBody, renderSettingsTab, loadMcp }));
+    return;
+  }
+
   for (const item of data.mcp) {
     const card = document.createElement("div");
     card.className = `slist-item${item.enabledClaude ? " is-active" : ""}`;

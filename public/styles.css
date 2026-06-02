@@ -689,6 +689,16 @@ button { border: 1px solid transparent; background: none; cursor: pointer; trans
 
 .empty-state b { display: block; font-size: 18px; font-weight: 600; color: var(--td-text-color-primary); margin-bottom: 6px; }
 .empty-state span { font-size: var(--td-font-size-body-large); color: var(--td-text-color-secondary); line-height: 1.6; }
+.empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 14px; }
+.mini-empty {
+  padding: 12px 10px;
+  color: var(--td-text-color-disabled);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+}
+.mini-empty b { display: block; margin-bottom: 3px; color: var(--td-text-color-secondary); font-size: 12px; }
+.mini-empty .st-btn { margin-top: 8px; }
 
 /* ── Messages - Cursor style ── */
 
@@ -1273,6 +1283,68 @@ pre code { padding: 0; background: none; }
 .teams-subtitle { font-size: 11px; color: var(--td-text-color-disabled); margin-top: 2px; }
 .teams-body { flex: 1; min-height: 0; overflow: hidden; padding: 12px 16px; width: 100%; }
 
+.wizard-overlay {
+  position: fixed; inset: 0; z-index: 210;
+  display: none; place-items: center;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(8px);
+}
+.wizard-overlay.is-open { display: grid; }
+.wizard-box {
+  width: min(720px, calc(100vw - 28px));
+  max-height: min(720px, calc(100vh - 28px));
+  display: flex; flex-direction: column;
+  border: 1px solid var(--td-border-level-1-color);
+  border-radius: 12px;
+  background: var(--td-bg-color-container);
+  box-shadow: var(--td-shadow-3);
+  overflow: hidden;
+}
+.wizard-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+  padding: 18px 18px 12px;
+  border-bottom: 1px solid var(--td-border-level-2-color);
+}
+.wizard-kicker { color: var(--td-brand-color); font-size: 11px; font-weight: 700; margin-bottom: 4px; }
+.wizard-title { color: var(--td-text-color-primary); font-size: 20px; font-weight: 700; }
+.wizard-steps {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px;
+  padding: 12px 18px 0;
+}
+.wizard-step {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--td-border-level-2-color);
+  border-radius: 7px;
+  color: var(--td-text-color-disabled);
+  background: var(--td-bg-color-secondarycontainer);
+  font-size: 11px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wizard-step.is-active {
+  color: var(--td-brand-color);
+  border-color: rgba(69, 130, 255, 0.45);
+  background: var(--td-brand-color-light);
+}
+.wizard-body { padding: 16px 18px; overflow: auto; }
+.wizard-body p { margin: 0 0 10px; color: var(--td-text-color-secondary); line-height: 1.6; }
+.wizard-body ul { margin: 0 0 12px 18px; padding: 0; color: var(--td-text-color-secondary); line-height: 1.6; }
+.wizard-panel {
+  padding: 12px;
+  border: 1px solid var(--td-border-level-2-color);
+  border-radius: 8px;
+  background: var(--td-bg-color-page);
+}
+.wizard-panel + .wizard-panel { margin-top: 10px; }
+.wizard-panel b { display: block; margin-bottom: 4px; color: var(--td-text-color-primary); }
+.wizard-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--td-border-level-2-color);
+  background: var(--td-bg-color-secondarycontainer);
+}
+.wizard-actions { display: flex; gap: 6px; }
+
 .settings-head {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 12px;
@@ -1291,6 +1363,17 @@ pre code { padding: 0; background: none; }
 .settings-back svg { width: 16px; height: 16px; }
 
 .settings-title { font-size: var(--td-font-size-title-small); font-weight: 600; }
+
+.settings-guide {
+  padding: 11px 12px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(69, 130, 255, 0.24);
+  border-radius: 8px;
+  background: rgba(69, 130, 255, 0.06);
+}
+.settings-guide b { display: block; margin-bottom: 4px; color: var(--td-text-color-primary); font-size: 13px; }
+.settings-guide span { display: block; color: var(--td-text-color-secondary); font-size: 12px; line-height: 1.55; }
+.settings-guide .scard-actions { margin-top: 8px; }
 
 .settings-tabs {
   display: flex; gap: 2px; padding: 6px 12px;
