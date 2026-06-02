@@ -18,6 +18,7 @@ export async function loadProviders(d) { const r = await call("listProviders", [
 export async function loadSkills(d) { const r = await call("listSkills", []); if (r.ok) d.skills = r.data || []; return r; }
 export async function loadSkillCategories(d) { const r = await call("listSkillCategories", []); if (r.ok && r.data) { d.categorizedSkills = r.data.skills || []; d.categoryInfo = r.data.categoryInfo || {}; d.skills = d.categorizedSkills; } return r; }
 export async function loadIdentities(d) { const r = await call("listIdentities", []); if (r.ok) d.identities = r.data || []; return r; }
+export async function loadTeams(d) { const r = await call("listTeams", []); if (r.ok) d.teams = r.data || []; return r; }
 export async function loadMcp(d) { const r = await call("listMcp", []); if (r.ok) d.mcp = r.data || []; return r; }
 export async function loadProjects(d) { const r = await call("listProjects", []); if (r.ok) d.projects = r.data || []; return r; }
 export async function loadPlugins(d) { const r = await call("listPlugins", []); if (r.ok) d.plugins = r.data || []; return r; }

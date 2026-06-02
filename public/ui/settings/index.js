@@ -2,6 +2,7 @@ import { save, state } from "../state.js";
 import { $ } from "../helpers.js";
 import { renderProvidersSettings } from "./providers.js";
 import { renderIdentitiesSettings } from "./identities.js";
+import { renderTeamsSettings } from "./teams.js";
 import { renderSkillsSettings } from "./skills.js";
 import { renderMcpSettings } from "./mcp.js";
 import { renderPluginsSettings } from "./plugins.js";
@@ -25,16 +26,15 @@ export function openSettings(tab) {
 }
 
 export function renderSettingsTab() {
-  if (state.panel === "teams") { state.panel = "identities"; save(); }
-
   $("#settingsTabs").querySelectorAll(".stab").forEach(b => b.classList.toggle("is-active", b.dataset.tab === state.panel));
   settingsBody.innerHTML = "";
-  const titles = { providers: "Provider 管理", identities: "身份与协作", skills: "Skills 管理", mcp: "MCP 服务", plugins: "插件", runners: "Runner 管理", usage: "用量统计", diagnostics: "诊断", general: "通用设置" };
+  const titles = { providers: "Provider 管理", teams: "Teams 工作流", identities: "身份与协作", skills: "Skills 管理", mcp: "MCP 服务", plugins: "插件", runners: "Runner 管理", usage: "用量统计", diagnostics: "诊断", general: "通用设置" };
   $("#settingsTitle").textContent = titles[state.panel] || "设置";
 
   const panelDeps = { settingsBody, renderSettingsTab, ...deps };
 
   if (state.panel === "providers") renderProvidersSettings(panelDeps);
+  if (state.panel === "teams") renderTeamsSettings(panelDeps);
   if (state.panel === "identities") renderIdentitiesSettings(panelDeps);
   if (state.panel === "skills") renderSkillsSettings(panelDeps);
   if (state.panel === "mcp") renderMcpSettings(panelDeps);

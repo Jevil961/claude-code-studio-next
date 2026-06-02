@@ -1,7 +1,7 @@
 import { data, save, state } from "./state.js";
 import { getBridge, safeBridge, runtimeAction } from "./bridge.js";
 import { $, basename, toast } from "./helpers.js";
-import { configure as configureDataLoader, loadProviders, loadSkills, loadSkillCategories, loadIdentities, loadMcp, loadPlugins, loadAutomations, loadUsage, loadRunners, loadDiag, loadProjects, refreshProjectIndex, checkEnv, syncActiveIdentity, mergeCustomProjects, projectIndexState, setProjectIndexState, skillCategoriesLoaded, setSkillCategoriesLoaded, getLastRefresh, setLastRefresh, refreshSettingsIfOpen } from "./data-loader.js";
+import { configure as configureDataLoader, loadProviders, loadSkills, loadSkillCategories, loadIdentities, loadTeams, loadMcp, loadPlugins, loadAutomations, loadUsage, loadRunners, loadDiag, loadProjects, refreshProjectIndex, checkEnv, syncActiveIdentity, mergeCustomProjects, projectIndexState, setProjectIndexState, skillCategoriesLoaded, setSkillCategoriesLoaded, getLastRefresh, setLastRefresh, refreshSettingsIfOpen } from "./data-loader.js";
 import { configure as configureContextFooter, updateFooter, renderContextStack, addTimeline, timelineFromClaudeEvent, setRunTimeline, setRunTouchedFiles, setLastTimelineKey } from "./context-footer.js";
 import { configure as configureMessages, renderMessages, addAttachments, renderAttachments, promptWithAttachments, setAttachedFiles, getAttachedFiles } from "./messages.js";
 import { configure as configureProjectNav, renderProjects, selectProject, renderConvs, selectSession, loadSession, recoverMissingSession, validateActiveSession } from "./project-nav.js";
@@ -41,6 +41,7 @@ export function applyBootstrap(payload) {
   if (d.categoryInfo && typeof d.categoryInfo === "object") data.categoryInfo = d.categoryInfo;
   if (Array.isArray(d.mcp)) data.mcp = d.mcp;
   if (Array.isArray(d.identities)) data.identities = d.identities;
+  if (Array.isArray(d.teams)) data.teams = d.teams;
   if (Array.isArray(d.projects)) { data.projects = d.projects; mergeCustomProjects(); }
   if (Array.isArray(d.plugins)) data.plugins = d.plugins;
   if (Array.isArray(d.automations)) data.automations = d.automations;
@@ -133,6 +134,7 @@ export async function boot() {
       checkEnv(),
       loadProviders(),
       loadIdentities(),
+      loadTeams(),
       loadProjects(),
     ]);
   }
@@ -263,7 +265,7 @@ export function initApp() {
 
   // Quick actions
   $("#pluginsBtn")?.addEventListener("click", async () => { await loadPlugins(); openSettings("plugins"); });
-  $("#teamsBtn")?.addEventListener("click", () => openSettings("identities"));
+  $("#teamsBtn")?.addEventListener("click", () => openSettings("teams"));
   $("#refreshIndexBtn")?.addEventListener("click", () => throttledRefresh(true));
 
   // Add folder button
@@ -332,9 +334,10 @@ export function initApp() {
     closeSearchPanel,
   });
   configureSettings({
-    loadPlugins, loadMcp, loadRunners, loadUsage, loadDiag,
+    loadPlugins, loadMcp, loadRunners, loadUsage, loadDiag, loadTeams,
     settingsPage,
     updateFooter, populateModelDropdown, populateIdentitiesSubmenu,
+    setPerm,
     curProvider: () => data.providers.find(p => p.current) || data.providers[0] || null,
     selProject: () => data.projects.find(p => p.id === state.selectedProject) || data.projects[0] || null,
     switchIdentity: (id) => switchIdentitySetting(id, { settingsBody, renderSettingsTab, updateFooter, populateIdentitiesSubmenu }),

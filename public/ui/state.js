@@ -1,7 +1,7 @@
 const SK = "ccs-v6";
 
 export const data = {
-  providers: [], skills: [], mcp: [], projects: [], plugins: [],
+  providers: [], skills: [], mcp: [], projects: [], plugins: [], teams: [],
   automations: [], usage: null, runners: [], diagnostics: null,
   identities: [], categorizedSkills: null, categoryInfo: {}, selectedCategory: "all",
   loadErrors: {},
@@ -23,7 +23,7 @@ function defaults() {
     permissionMode: "auto", runnerStrategy: "strict", messages: [],
     selectedProject: "", selectedSession: "", selectedSessionPath: "",
     clientSessionKey: crypto.randomUUID(), pendingPlanPrompt: "",
-    searchTerm: "", sessionMeta: {}, priceTable: {}, defaultCwd: "", customProjects: [],
+    searchTerm: "", sessionMeta: {}, priceTable: {}, defaultCwd: "", customProjects: [], teamRuns: {},
     density: "normal", diagnosticsLog: [], sidebarOpen: true, contextOpen: true,
   };
 }

@@ -16,6 +16,7 @@ const claudeSetup = await import("./claude-setup.js");
 const { getDb } = await import("./db/connection.js");
 const { categorizeAllSkills, CATEGORIES } = await import("./skill-categories.js");
 const identities = await import("./identities.js");
+const teams = await import("./teams.js");
 const { PROVIDER_PRESETS, API_FORMATS } = await import("./provider-presets.js");
 
 let dbReady = false;
@@ -130,6 +131,7 @@ const handlers = {
     return ok({
       providers: providers.list(),
       identities: identities.getIdentities(),
+      teams: teams.listTeams(),
       projects: projectsModule.listProjects(),
       runners: runner.listRunners(),
     });
@@ -216,6 +218,17 @@ const handlers = {
   setSkillInCategory: (identityId, categoryId, skillDir, enabled) => ok(identities.setSkillInCategory(identityId, categoryId, skillDir, enabled)),
   enableAllInCategory: (identityId, categoryId) => ok(identities.enableAllInCategory(identityId, categoryId)),
   disableAllInCategory: (identityId, categoryId) => ok(identities.disableAllInCategory(identityId, categoryId)),
+  listTeams: () => ok(teams.listTeams()),
+  createTeam: (data) => ok(teams.createTeam(data)),
+  updateTeam: (teamId, updates) => ok(teams.updateTeam(teamId, updates)),
+  deleteTeam: (teamId) => ok(teams.deleteTeam(teamId)),
+  createTeamMember: (teamId, data) => ok(teams.createTeamMember(teamId, data)),
+  updateTeamMember: (teamId, memberId, updates) => ok(teams.updateTeamMember(teamId, memberId, updates)),
+  deleteTeamMember: (teamId, memberId) => ok(teams.deleteTeamMember(teamId, memberId)),
+  createTeamStep: (teamId, data) => ok(teams.createTeamStep(teamId, data)),
+  updateTeamStep: (teamId, stepId, updates) => ok(teams.updateTeamStep(teamId, stepId, updates)),
+  deleteTeamStep: (teamId, stepId) => ok(teams.deleteTeamStep(teamId, stepId)),
+  composeTeamStepPrompt: (payload) => ok(teams.composeTeamStepPrompt(payload)),
   getProviderPresets: () => ok({ presets: PROVIDER_PRESETS, apiFormats: API_FORMATS }),
   fetchModels: (opts = {}) => wrapped(() => {
     const preset = PROVIDER_PRESETS.find(p => p.id === opts.presetId || p.baseUrl === opts.baseUrl || p.name === opts.name);

@@ -106,6 +106,7 @@ function installFakeBridge() {
         categoryInfo: {},
         mcp: [],
         identities: [],
+        teams: [],
         projects: [],
         plugins: [],
         automations: [],
@@ -115,6 +116,7 @@ function installFakeBridge() {
     checkEnv: async () => ({ ok: true }),
     detectClaude: async () => ({ ok: true, data: { installed: true } }),
     listSkillCategories: async () => ({ ok: true, data: { skills: [], categoryInfo: {} } }),
+    listTeams: async () => ({ ok: true, data: [] }),
     listMcp: async () => ({ ok: true, data: [] }),
     listPlugins: async () => ({ ok: true, data: [] }),
     listRunners: async () => ({ ok: true, data: [] }),
@@ -236,4 +238,43 @@ test("conversation search filters before limiting visible sessions", async () =>
 
   assert.equal(get("#convList").children.length, 1);
   assert.match(get("#convList").children[0].querySelector(".conv-item-title").innerHTML, /needle.*session/);
+});
+
+test("teams settings renders user-defined members and workflow steps", async () => {
+  installFakeDom();
+  const { data, state } = await import("../public/ui/state.js");
+  const { renderTeamsSettings } = await import("../public/ui/settings/teams.js");
+  const settingsBody = new FakeElement("#settingsBody");
+
+  data.providers = [{ id: "provider-a", name: "Provider A", model: "model-a" }];
+  data.identities = [{ id: "identity-a", name: "Architect", icon: "AR" }];
+  data.teams = [{
+    id: "team-a",
+    name: "WorkBuddy",
+    description: "User-defined team",
+    rules: "Escalate blockers.",
+    members: [{
+      id: "member-a",
+      name: "Reviewer",
+      icon: "RV",
+      role: "Review plans",
+      providerId: "provider-a",
+      identityId: "identity-a",
+      permissionMode: "plan",
+    }],
+    workflow: [{
+      id: "step-a",
+      name: "Review",
+      memberId: "member-a",
+      instruction: "Find risks",
+      requiresApproval: true,
+    }],
+  }];
+  state.selectedTeamId = "team-a";
+
+  renderTeamsSettings({ settingsBody, renderSettingsTab() {} });
+
+  assert.match(settingsBody.children.map(child => child.innerHTML).join("\n"), /WorkBuddy/);
+  assert.match(settingsBody.children.map(child => child.innerHTML).join("\n"), /Reviewer/);
+  assert.match(settingsBody.children.map(child => child.innerHTML).join("\n"), /Review/);
 });

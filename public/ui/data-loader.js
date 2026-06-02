@@ -79,6 +79,14 @@ export async function loadIdentities() {
   return r;
 }
 
+export async function loadTeams() {
+  const r = await safeBridge("listTeams", []);
+  recordLoadResult("teams", r, "Teams");
+  if (r.ok) data.teams = r.data || [];
+  refreshSettingsIfOpen("teams");
+  return r;
+}
+
 export async function loadMcp() {
   const r = await safeBridge("listMcp", []);
   recordLoadResult("mcp", r, "MCP");
