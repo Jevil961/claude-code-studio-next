@@ -1,21 +1,33 @@
 import { data, save, state } from "../state.js";
 import { safeBridge } from "../bridge.js";
 import { toast } from "../helpers.js";
+import { runStepAsync, isRunning as claudeIsRunning } from "../chat-engine.js";
 import { showConfirm, showModal } from "../modal.js";
 import { escapeHtml } from "../../markdown.js";
 import { loadIdentities, loadProviders, loadTeams } from "../data-loader.js";
 
-const NODE_W = 190;
-const NODE_H = 96;
-const CANVAS_W = 1800;
-const CANVAS_H = 1100;
+const NODE_W = 200;
+const NODE_H = 80;
+const CANVAS_W = 2400;
+const CANVAS_H = 1400;
+const MAX_WORKFLOW_STEPS = 24;
+
+const NODE_COLORS = {
+  start: { bg: "#1a3a2a", border: "#22c55e", bar: "#22c55e", icon: "#4ade80" },
+  intake: { bg: "#1a2a3a", border: "#3b82f6", bar: "#3b82f6", icon: "#60a5fa" },
+  work: { bg: "#1e293b", border: "#475569", bar: "#6366f1", icon: "#818cf8" },
+  review: { bg: "#2a2a1a", border: "#f59e0b", bar: "#f59e0b", icon: "#fbbf24" },
+  approval: { bg: "#2a1a2a", border: "#a855f7", bar: "#a855f7", icon: "#c084fc" },
+  final: { bg: "#1a2a2a", border: "#10b981", bar: "#10b981", icon: "#34d399" },
+};
+function nodeColor(type) { return NODE_COLORS[type] || NODE_COLORS.work; }
 const COMPONENTS = [
-  { type: "start", name: "开始", icon: "S", instruction: "接收右侧任务输入，并交给第一位处理身份。" },
-  { type: "intake", name: "身份处理", icon: "ID", instruction: "接收上游输入，按身份规则处理后交接给下一个节点。" },
-  { type: "work", name: "执行任务", icon: "WK", instruction: "根据上游要求完成执行、修改或实现，并输出交接说明。" },
-  { type: "review", name: "测试判断", icon: "QA", instruction: "检查上游结果。满意输出 DECISION: pass；不满意输出 DECISION: revise。" },
-  { type: "approval", name: "审核判断", icon: "OK", instruction: "审核结果是否可交付。通过输出 DECISION: approve；不通过输出 DECISION: reject。" },
-  { type: "final", name: "输出结果", icon: "OUT", instruction: "形成给用户的最终结果或交付摘要。" },
+  { type: "start", name: "开始", icon: "S", instruction: "接收任务输入，交给第一位处理身份", color: "#22c55e" },
+  { type: "intake", name: "身份处理", icon: "ID", instruction: "接收上游输入，按身份规则处理后交接", color: "#3b82f6" },
+  { type: "work", name: "执行任务", icon: "WK", instruction: "完成执行、修改或实现，输出交接说明", color: "#6366f1" },
+  { type: "review", name: "测试判断", icon: "QA", instruction: "检查结果，输出 DECISION: pass/revise", color: "#f59e0b" },
+  { type: "approval", name: "审核判断", icon: "OK", instruction: "审核是否可交付，输出 DECISION", color: "#a855f7" },
+  { type: "final", name: "输出结果", icon: "OUT", instruction: "形成给用户的最终结果或交付摘要", color: "#10b981" },
 ];
 
 function selectedTeam() {
@@ -62,8 +74,25 @@ function outgoingEdges(team, stepId) {
 }
 
 function decisionFromText(text) {
-  const match = String(text || "").match(/DECISION\s*[:：]\s*(yes|no|pass|revise|approve|reject|default)/i);
-  return match ? match[1].toLowerCase() : "";
+  const raw = String(text || "");
+  const jsonMatch = raw.match(/"decision"\s*:\s*"(yes|no|pass|revise|approve|reject|default)"/i)
+    || raw.match(/\bdecision\s*[:：]\s*(yes|no|pass|revise|approve|reject|default)\b/i);
+  if (jsonMatch) return jsonMatch[1].toLowerCase();
+  const lineMatch = raw.match(/DECISION\s*[:：]\s*(yes|no|pass|revise|approve|reject|default)/i);
+  return lineMatch ? lineMatch[1].toLowerCase() : "";
+}
+
+function summarizeText(text, max = 180) {
+  const oneLine = String(text || "").replace(/\s+/g, " ").trim();
+  if (!oneLine) return "";
+  return oneLine.length > max ? `${oneLine.slice(0, max)}...` : oneLine;
+}
+
+function compactPath(path) {
+  const text = String(path || "");
+  if (!text) return "--";
+  if (text.length <= 46) return text;
+  return `${text.slice(0, 18)}...${text.slice(-24)}`;
 }
 
 function stepById(team, stepId) {
@@ -93,8 +122,13 @@ function effectiveTeamPermissionMode(member) {
 
 function runState(teamId) {
   state.teamRuns ||= {};
-  state.teamRuns[teamId] ||= { task: "", currentStepId: "", outputs: {}, completed: false, updatedAt: Date.now() };
-  return state.teamRuns[teamId];
+  state.teamRuns[teamId] ||= { task: "", currentStepId: "", outputs: {}, completed: false, updatedAt: Date.now(), running: false, stepHistory: [], error: "", conversation: [] };
+  const run = state.teamRuns[teamId];
+  run.running ??= false;
+  run.stepHistory ??= [];
+  run.conversation ??= [];
+  run.error ??= "";
+  return run;
 }
 
 function activeStepId(team) {
@@ -154,6 +188,292 @@ async function switchMemberContext(member, deps) {
   if (member?.identityId) await deps.switchIdentity?.(member.identityId);
   deps.setPerm?.(effectiveTeamPermissionMode(member));
   deps.updateFooter?.();
+}
+
+function validateTeamRun(team, startStep) {
+  if (!team) return "请先创建或选择一个 Team。";
+  if (!state.cwd && !team.cwd) return "请先选择项目目录，或在 Team 设置里指定项目路径。";
+  if (!team.workflow.length) return "请先添加至少一个工作流节点。";
+  if (!startStep) return "入口节点不存在，请重新设置入口。";
+  const missingMember = team.workflow.find(step => step.nodeType !== "start" && !step.memberId);
+  if (missingMember) return `节点「${missingMember.name}」还没有绑定身份。`;
+  const missingTarget = workflowEdges(team).find(edge => !stepById(team, edge.from) || !stepById(team, edge.to));
+  if (missingTarget) return "工作流里存在失效交接线，请删除后重连。";
+  return "";
+}
+
+// ── Auto-execution engine ──
+
+function resolveNextStep(team, step, output) {
+  const edges = outgoingEdges(team, step.id);
+  if (!edges.length) return null;
+  const decision = decisionFromText(output);
+  if (step.id === team.finalStepId && ["approve", "pass", "yes"].includes(decision)) return null;
+  if (edges.length === 1) return { step: stepById(team, edges[0].to), edge: edges[0] };
+  const matched = edges.find(e => e.condition === decision) || edges.find(e => e.condition === "default");
+  if (matched) return { step: stepById(team, matched.to), edge: matched };
+  return { step: null, edge: null, needsChoice: true, edges };
+}
+
+async function executeStep(team, step, run, deps) {
+  const startedAt = Date.now();
+  const member = memberById(team, step.memberId);
+  await switchMemberContext(member, deps);
+
+  const r = await safeBridge("composeTeamStepPrompt", null, {
+    teamId: team.id, stepId: step.id, task: run.task, previousOutputs: run.outputs || {},
+  });
+  if (!r.ok || !r.data?.prompt) {
+    throw new Error(r.error || "生成节点提示词失败");
+  }
+
+  const result = await runStepAsync(r.data.prompt, {
+    providerId: member?.providerId || "",
+    permissionMode: effectiveTeamPermissionMode(member),
+    cwd: team.cwd || state.cwd,
+  });
+  const durationMs = Date.now() - startedAt;
+  const provider = member?.providerId ? data.providers.find(item => item.id === member.providerId) : data.providers.find(item => item.current) || data.providers[0] || null;
+  const identity = member?.identityId ? data.identities.find(item => item.id === member.identityId) : data.identities.find(item => item.active) || null;
+
+  // Capture conversation for this step
+  if (result.ok && result.output) {
+    if (!run.conversation) run.conversation = [];
+    run.conversation.push({
+      stepId: step.id,
+      memberId: step.memberId,
+      prompt: r.data.prompt,
+      output: result.output,
+      timestamp: Date.now(),
+      durationMs,
+      providerName: provider?.name || "",
+      model: provider?.model || "",
+      identityName: identity?.name || "",
+    });
+  }
+
+  return {
+    ...result,
+    prompt: r.data.prompt,
+    durationMs,
+    startedAt,
+    finishedAt: Date.now(),
+    member,
+    provider,
+    identity,
+    cwd: team.cwd || state.cwd,
+  };
+}
+
+async function runSingleIdentityChat(team, step, member, message, run, deps) {
+  if (run.running) { toast("工作流正在运行中", "error"); return; }
+
+  run.running = true;
+  run.error = "";
+  if (!run.conversation) run.conversation = [];
+  run.updatedAt = Date.now();
+  save();
+  deps.renderSettingsTab?.();
+
+  try {
+    await switchMemberContext(member, deps);
+
+    // Build a simple prompt for single identity
+    const r = await safeBridge("composeTeamStepPrompt", null, {
+      teamId: team.id, stepId: step.id, task: message, previousOutputs: run.outputs || {},
+    });
+    if (!r.ok || !r.data?.prompt) {
+      throw new Error(r.error || "生成提示词失败");
+    }
+
+    const result = await runStepAsync(r.data.prompt, {
+      providerId: member?.providerId || "",
+      permissionMode: effectiveTeamPermissionMode(member),
+      cwd: team.cwd || state.cwd,
+    });
+
+    if (result.ok && result.output) {
+      run.conversation.push({
+        stepId: step.id,
+        memberId: step.memberId,
+        prompt: message,
+        output: result.output,
+        timestamp: Date.now(),
+      });
+    } else if (!result.ok) {
+      run.error = result.error || "执行失败";
+      toast(`执行失败：${result.error}`, "error");
+    }
+  } catch (err) {
+    run.error = String(err.message || err);
+    toast(`执行失败：${run.error}`, "error");
+  }
+
+  run.running = false;
+  run.updatedAt = Date.now();
+  save();
+  deps.renderSettingsTab?.();
+}
+
+async function runWorkflow(team, startStepId, task, deps) {
+  const run = runState(team.id);
+  if (run.running) { toast("工作流正在运行中", "error"); return; }
+  const startStep = stepById(team, startStepId);
+  const validationError = validateTeamRun(team, startStep);
+  if (validationError) { toast(validationError, "error"); return; }
+
+  run.running = true;
+  run.error = "";
+  run.runId = crypto.randomUUID();
+  run.startedAt = Date.now();
+  run.completedAt = 0;
+  run.outputs = run.outputs || {};
+  run.stepHistory = [];
+  run.conversation = [];
+  run.completed = false;
+  run.currentStepId = startStepId;
+  run.updatedAt = Date.now();
+  save();
+  deps.renderSettingsTab?.();
+
+  let currentStep = startStep;
+  let executedSteps = 0;
+
+  try {
+    while (currentStep && run.running) {
+      executedSteps += 1;
+      if (executedSteps > MAX_WORKFLOW_STEPS) {
+        throw new Error(`已达到 ${MAX_WORKFLOW_STEPS} 步保护上限。请检查是否存在无法收敛的循环。`);
+      }
+      // Skip start nodes (pass-through)
+      if (currentStep.nodeType === "start") {
+        const next = nextSteps(team, currentStep.id)[0];
+        if (!next) throw new Error("开始节点没有连接到下一步");
+        run.currentStepId = next.id;
+        run.updatedAt = Date.now();
+        save();
+        deps.renderSettingsTab?.();
+        currentStep = next;
+        continue;
+      }
+
+      // Execute this step
+      run.currentStepId = currentStep.id;
+      run.updatedAt = Date.now();
+      save();
+      deps.renderSettingsTab?.();
+
+      toast(`正在执行：${currentStep.name}`, "info");
+      const result = await executeStep(team, currentStep, run, deps);
+
+      if (!result.ok) {
+        run.stepHistory.push({
+          id: crypto.randomUUID(),
+          runId: run.runId,
+          stepId: currentStep.id,
+          memberId: currentStep.memberId,
+          status: "error",
+          error: result.error || `步骤 "${currentStep.name}" 执行失败`,
+          decision: "",
+          output: result.output || "",
+          outputPreview: summarizeText(result.output || result.error, 220),
+          prompt: result.prompt || "",
+          durationMs: result.durationMs || 0,
+          providerName: result.provider?.name || "",
+          model: result.provider?.model || "",
+          identityName: result.identity?.name || "",
+          cwd: result.cwd || "",
+          startedAt: result.startedAt || Date.now(),
+          timestamp: Date.now(),
+        });
+        throw new Error(result.error || `步骤 "${currentStep.name}" 执行失败`);
+      }
+
+      const output = result.output || "";
+      run.outputs[currentStep.id] = output;
+      const decision = decisionFromText(output);
+      const historyItem = {
+        id: crypto.randomUUID(),
+        runId: run.runId,
+        stepId: currentStep.id,
+        memberId: currentStep.memberId,
+        status: "done",
+        output,
+        outputPreview: summarizeText(output, 220),
+        decision,
+        prompt: result.prompt || "",
+        durationMs: result.durationMs || 0,
+        providerName: result.provider?.name || "",
+        model: result.provider?.model || "",
+        identityName: result.identity?.name || "",
+        cwd: result.cwd || "",
+        startedAt: result.startedAt || Date.now(),
+        timestamp: Date.now(),
+      };
+      run.stepHistory.push(historyItem);
+      run.updatedAt = Date.now();
+      save();
+
+      // Resolve next step
+      const next = resolveNextStep(team, currentStep, output);
+      historyItem.routeCondition = next?.edge?.condition || "";
+      historyItem.nextStepId = next?.step?.id || "";
+      if (!next) {
+        // Workflow complete (no next step or final with positive decision)
+        run.completed = true;
+        break;
+      }
+      if (currentStep.requiresApproval) {
+        const nextName = next.step?.name || "下一节点";
+        const approved = await showConfirm("确认交接", `「${currentStep.name}」已完成，是否继续交给「${nextName}」？\n\n摘要：${historyItem.outputPreview || "无摘要"}`);
+        if (!approved) {
+          run.error = `已在「${currentStep.name}」后暂停，等待人工确认。`;
+          break;
+        }
+      }
+      if (next.needsChoice) {
+        // DECISION not matched - ask user
+        const choice = await showModal("选择交接路线", [{
+          key: "edgeId", label: "下一步", type: "select", value: next.edges[0]?.id || "",
+          options: next.edges.map(e => ({ value: e.id, label: `${conditionLabel(e.condition)} → ${stepById(team, e.to)?.name || "未知"}` })),
+        }]);
+        const chosen = next.edges.find(e => e.id === choice?.edgeId);
+        if (!chosen) { run.error = "用户取消了路线选择"; break; }
+        currentStep = stepById(team, chosen.to);
+      } else if (next.step) {
+        currentStep = next.step;
+      } else {
+        run.completed = true;
+        break;
+      }
+    }
+  } catch (err) {
+    run.error = String(err.message || err);
+    toast(`工作流中断：${run.error}`, "error");
+  }
+
+  run.running = false;
+  run.completedAt = Date.now();
+  run.updatedAt = Date.now();
+  save();
+  deps.renderSettingsTab?.();
+
+  if (run.completed) {
+    toast("工作流已完成", "success");
+  }
+}
+
+function stopWorkflow(teamId) {
+  const run = runState(teamId);
+  run.running = false;
+  run.error = "用户手动停止";
+  run.completedAt = Date.now();
+  run.updatedAt = Date.now();
+  save();
+  // Stop the current Claude run
+  const bridge = document.querySelector("#runStopBtn");
+  bridge?.click();
+  toast("工作流已停止", "info");
 }
 
 function setPrompt(text) {
@@ -280,7 +600,14 @@ async function resetRun(team, renderSettingsTab) {
   run.task = "";
   run.currentStepId = team.entryStepId || team.workflow[0]?.id || "";
   run.outputs = {};
+  run.stepHistory = [];
+  run.conversation = [];
   run.completed = false;
+  run.running = false;
+  run.error = "";
+  run.runId = "";
+  run.startedAt = 0;
+  run.completedAt = 0;
   run.updatedAt = Date.now();
   save();
   renderSettingsTab();
@@ -290,6 +617,7 @@ async function createTeamDlg(renderSettingsTab) {
   const result = await showModal("创建 Team 脑图", [
     { key: "name", label: "名称", value: "WorkBuddy Team" },
     { key: "description", label: "描述", value: "", type: "textarea" },
+    { key: "cwd", label: "项目路径", value: state.cwd || "", placeholder: "留空使用全局项目路径" },
     { key: "rules", label: "团队规则", value: "", type: "textarea", placeholder: "所有身份共同遵守的规则、交接标准、最终输出标准" },
   ]);
   if (!result?.name?.trim()) return;
@@ -421,6 +749,7 @@ async function editTeamDlg(team, renderSettingsTab) {
   const result = await showModal("编辑 Team", [
     { key: "name", label: "名称", value: team.name || "" },
     { key: "description", label: "描述", value: team.description || "", type: "textarea" },
+    { key: "cwd", label: "项目路径", value: team.cwd || "", placeholder: "留空使用全局项目路径" },
     { key: "rules", label: "团队规则", value: team.rules || "", type: "textarea" },
   ]);
   if (!result) return;
@@ -574,6 +903,108 @@ async function markNode(team, step, key, renderSettingsTab) {
   await saveGraph(team, { [key]: step.id }, renderSettingsTab);
 }
 
+function buildRunAudit(team, run) {
+  const history = run.stepHistory || [];
+  return {
+    team: {
+      id: team.id,
+      name: team.name,
+      description: team.description || "",
+      cwd: team.cwd || state.cwd || "",
+      members: team.members.map(member => ({
+        id: member.id,
+        name: member.name,
+        providerId: member.providerId || "",
+        identityId: member.identityId || "",
+        permissionMode: effectiveTeamPermissionMode(member),
+      })),
+    },
+    run: {
+      id: run.runId || "",
+      task: run.task || "",
+      status: run.running ? "running" : run.completed ? "completed" : run.error ? "error" : "idle",
+      error: run.error || "",
+      startedAt: run.startedAt || 0,
+      completedAt: run.completedAt || 0,
+      durationMs: run.startedAt && run.completedAt ? run.completedAt - run.startedAt : 0,
+      steps: history.map(item => {
+        const step = stepById(team, item.stepId);
+        const next = item.nextStepId ? stepById(team, item.nextStepId) : null;
+        return {
+          id: item.id || "",
+          stepId: item.stepId,
+          stepName: step?.name || item.stepId,
+          memberId: item.memberId || "",
+          memberName: memberById(team, item.memberId)?.name || "",
+          status: item.status || "done",
+          decision: item.decision || "",
+          routeCondition: item.routeCondition || "",
+          nextStepId: item.nextStepId || "",
+          nextStepName: next?.name || "",
+          providerName: item.providerName || "",
+          model: item.model || "",
+          identityName: item.identityName || "",
+          cwd: item.cwd || "",
+          durationMs: item.durationMs || 0,
+          outputPreview: item.outputPreview || summarizeText(item.output, 220),
+          error: item.error || "",
+          timestamp: item.timestamp || 0,
+        };
+      }),
+    },
+  };
+}
+
+function auditToMarkdown(audit) {
+  const lines = [
+    `# ${audit.team.name} Run Audit`,
+    "",
+    `- Status: ${audit.run.status}`,
+    `- Task: ${audit.run.task || "--"}`,
+    `- Project: ${audit.team.cwd || "--"}`,
+    `- Duration: ${Math.round((audit.run.durationMs || 0) / 1000)}s`,
+  ];
+  if (audit.run.error) lines.push(`- Error: ${audit.run.error}`);
+  lines.push("", "## Steps");
+  for (const step of audit.run.steps) {
+    lines.push(
+      "",
+      `### ${step.stepName}`,
+      `- Member: ${step.memberName || "--"}`,
+      `- Status: ${step.status}`,
+      `- Provider: ${step.providerName || "--"}${step.model ? ` / ${step.model}` : ""}`,
+      `- Identity: ${step.identityName || "--"}`,
+      `- Duration: ${Math.round((step.durationMs || 0) / 1000)}s`,
+      `- Decision: ${step.decision || "--"}`,
+      `- Route: ${step.routeCondition || "--"}${step.nextStepName ? ` -> ${step.nextStepName}` : ""}`,
+      "",
+      step.error ? `Error: ${step.error}` : (step.outputPreview || "--"),
+    );
+  }
+  return lines.join("\n");
+}
+
+function downloadText(filename, content, type = "text/plain") {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportTeamRun(team, run, format = "json") {
+  const audit = buildRunAudit(team, run);
+  const safeName = String(team.name || "team").replace(/[^\w.-]+/g, "-").replace(/^-|-$/g, "") || "team";
+  if (format === "md") {
+    downloadText(`${safeName}-run-audit.md`, auditToMarkdown(audit), "text/markdown");
+  } else {
+    downloadText(`${safeName}-run-audit.json`, JSON.stringify(audit, null, 2), "application/json");
+  }
+  toast("运行审计已导出", "success");
+}
+
 function renderTeamList({ settingsBody, renderSettingsTab }) {
   const wrap = document.createElement("div");
   wrap.className = "scard";
@@ -604,157 +1035,474 @@ function renderTeamList({ settingsBody, renderSettingsTab }) {
   }
 }
 
-function renderComponentPalette(team, deps) {
-  const { settingsBody, renderSettingsTab } = deps;
-  const card = document.createElement("div");
-  card.className = "scard";
-  card.innerHTML = `
-    <div class="scard-head"><span class="scard-title">组件</span></div>
-    <div class="slist-sub" style="white-space:normal;margin-bottom:8px;">点击组件添加到画布，或拖到中间画布的具体位置。</div>
-    <div class="team-component-grid">
-      ${COMPONENTS.map(item => `
-        <button class="team-component" draggable="true" data-type="${item.type}" type="button">
-          <b>${escapeHtml(item.icon)} ${escapeHtml(item.name)}</b>
-          <span>${escapeHtml(item.instruction)}</span>
-        </button>
-      `).join("")}
-    </div>
-  `;
-  for (const btn of card.querySelectorAll(".team-component")) {
-    btn.addEventListener("click", () => addNodeFromComponent(team, btn.dataset.type, null, renderSettingsTab));
-    btn.addEventListener("dragstart", event => {
-      event.dataTransfer?.setData("text/team-node-type", btn.dataset.type);
-      event.dataTransfer?.setData("text/plain", btn.dataset.type);
-    });
-  }
-  settingsBody.append(card);
-}
-
-function renderHeader(team, deps) {
+function renderRightPanel(team, deps) {
   const { settingsBody, renderSettingsTab } = deps;
   const run = runState(team.id);
-  const current = stepById(team, activeStepId(team));
-  const header = document.createElement("div");
-  header.className = "scard";
-  header.innerHTML = `
-    <div class="scard-head">
-      <span class="scard-title">运行任务</span>
-      <div class="scard-actions"><button class="st-btn t-btn--link" id="editTeamBtn">编辑 Team</button></div>
-    </div>
-    <div class="team-run-composer">
-      <textarea id="teamTaskInput" placeholder="输入任务，然后从 Start 节点运行...">${escapeHtml(run.task || "")}</textarea>
-      <div class="team-run-actions">
-        <span class="slist-sub" style="white-space:normal;">${escapeHtml(current?.name || "未选择节点")}${run.completed ? " · 已完成" : ""}</span>
-        <div class="scard-actions">
-          <button class="st-btn t-btn--link" id="resetRunBtn" type="button">清空</button>
-          <button class="st-btn t-btn--link" id="acceptOutputBtn" type="button">采纳并交接</button>
-          <button class="st-btn t-btn--link" id="runCurrentBtn" type="button">运行当前</button>
-          <button class="st-btn t-btn--primary t-btn--sm" id="startFlowBtn" type="button">从开始运行</button>
+  const step = stepById(team, activeStepId(team));
+  const panel = document.createElement("div");
+  panel.className = "team-right-panel";
+
+  // Status bar
+  const statusBar = document.createElement("div");
+  statusBar.className = "team-status-bar";
+  const statusLabel = run.running ? "运行中" : run.completed ? "已完成" : run.error ? "异常" : "就绪";
+  const statusClass = run.running ? "is-running" : run.completed ? "is-done" : run.error ? "is-error" : "is-idle";
+  const stepCount = (run.stepHistory || []).length;
+  statusBar.innerHTML = `
+    <span class="team-status-badge team-status-${statusClass}">${statusLabel}</span>
+    <span class="team-status-info">${stepCount} 步${run.runId ? ` · ${escapeHtml(String(run.runId).slice(0, 8))}` : ""}</span>
+    <button class="team-mini-btn" id="exportRunJsonBtn" type="button" ${stepCount ? "" : "disabled"}>JSON</button>
+    <button class="team-mini-btn" id="exportRunMdBtn" type="button" ${stepCount ? "" : "disabled"}>MD</button>
+  `;
+  statusBar.querySelector("#exportRunJsonBtn")?.addEventListener("click", () => exportTeamRun(team, run, "json"));
+  statusBar.querySelector("#exportRunMdBtn")?.addEventListener("click", () => exportTeamRun(team, run, "md"));
+  panel.append(statusBar);
+
+  // Tab switcher
+  const tabs = document.createElement("div");
+  tabs.className = "team-right-tabs";
+  tabs.innerHTML = `
+    <button class="team-right-tab is-active" data-tab="props">属性</button>
+    <button class="team-right-tab" data-tab="chat">对话</button>
+    <button class="team-right-tab" data-tab="log">记录 ${run.stepHistory?.length ? `(${run.stepHistory.length})` : ""}</button>
+  `;
+  panel.append(tabs);
+
+  // Tab content containers
+  const propsBody = document.createElement("div");
+  propsBody.className = "team-right-body";
+  const chatBody = document.createElement("div");
+  chatBody.className = "team-right-body team-chat-panel";
+  chatBody.style.display = "none";
+  const logBody = document.createElement("div");
+  logBody.className = "team-right-body";
+  logBody.style.display = "none";
+  panel.append(propsBody, chatBody, logBody);
+  settingsBody.append(panel);
+
+  // Tab switching
+  tabs.addEventListener("click", e => {
+    const btn = e.target.closest(".team-right-tab");
+    if (!btn) return;
+    tabs.querySelectorAll(".team-right-tab").forEach(b => b.classList.remove("is-active"));
+    btn.classList.add("is-active");
+    const tab = btn.dataset.tab;
+    propsBody.style.display = tab === "props" ? "" : "none";
+    chatBody.style.display = tab === "chat" ? "" : "none";
+    logBody.style.display = tab === "log" ? "" : "none";
+  });
+
+  // Properties tab
+  if (step) {
+    propsBody.innerHTML = `
+      <div class="team-prop-section">
+        <div class="team-prop-row"><label>名称</label><input class="team-config-input" id="nodeNameInput" value="${escapeHtml(step.name || "")}"></div>
+        <div class="team-prop-row"><label>类型</label><select class="team-config-select" id="nodeTypeSelect">${nodeTypeOptions(step.nodeType || "work").map(o => `<option value="${o.value}" ${o.selected ? "selected" : ""}>${o.label}</option>`).join("")}</select></div>
+        <div class="team-prop-row"><label>身份</label><select class="team-config-select" id="nodeMemberSelect">${memberOptions(team, step.memberId || "").map(o => `<option value="${o.value}" ${o.selected ? "selected" : ""}>${o.label}</option>`).join("")}</select></div>
+        <label class="team-check-row"><input type="checkbox" id="nodeApprovalInput" ${step.requiresApproval ? "checked" : ""}> <span>完成后需要人工确认再交接</span></label>
+        <div class="team-prop-row"><label>指令</label><textarea class="team-config-textarea" id="nodeInstructionInput">${escapeHtml(step.instruction || "")}</textarea></div>
+        <div class="team-prop-row"><label>路由判断</label><textarea class="team-config-textarea" id="nodeDecisionInput" placeholder="满意输出 DECISION: pass，不满意输出 DECISION: revise">${escapeHtml(step.decisionInstruction || "")}</textarea></div>
+        <div class="team-prop-actions">
+          <button class="st-btn t-btn--link" id="markEntryBtn">设为入口</button>
+          <button class="st-btn t-btn--link" id="markFinalBtn">设为输出</button>
+          <button class="st-btn t-btn--danger t-btn--sm" id="deleteNodeBtn">删除</button>
+          <button class="st-btn t-btn--primary t-btn--sm" id="saveNodeConfigBtn">保存</button>
         </div>
       </div>
-    </div>
-    <div class="slist-sub" style="margin-top:8px;white-space:normal;">当前节点：${escapeHtml(current?.name || "未选择")} ${run.completed ? "· 已完成" : ""}</div>
-    <div class="slist-sub" style="margin-top:4px;white-space:normal;">${escapeHtml(team.description || "左侧拖组件，中间连线，右侧输入任务并运行。")}</div>
-  `;
-  settingsBody.append(header);
-  header.querySelector("#teamTaskInput").addEventListener("input", event => {
-    run.task = event.currentTarget.value || "";
-    run.updatedAt = Date.now();
-    save();
-  });
-  header.querySelector("#startFlowBtn").addEventListener("click", () => {
-    const entry = stepById(team, team.entryStepId) || team.workflow[0];
-    if (!entry) {
-      toast("请先在画布添加 Start 或入口节点", "error");
-      return;
-    }
-    run.currentStepId = entry.id;
-    run.outputs = {};
-    run.completed = false;
-    run.updatedAt = Date.now();
-    save();
-    prepareNode(team, entry, deps);
-  });
-  header.querySelector("#runCurrentBtn").addEventListener("click", () => current ? prepareNode(team, current, deps) : toast("请先添加并选择节点", "error"));
-  header.querySelector("#acceptOutputBtn").addEventListener("click", () => acceptAndHandoff(team, deps));
-  header.querySelector("#resetRunBtn").addEventListener("click", () => resetRun(team, renderSettingsTab));
-  header.querySelector("#editTeamBtn").addEventListener("click", () => editTeamDlg(team, renderSettingsTab));
+    `;
+    propsBody.querySelector("#markEntryBtn").addEventListener("click", () => markNode(team, step, "entryStepId", renderSettingsTab));
+    propsBody.querySelector("#markFinalBtn").addEventListener("click", () => markNode(team, step, "finalStepId", renderSettingsTab));
+    propsBody.querySelector("#deleteNodeBtn").addEventListener("click", () => deleteNodeDlg(team, step, renderSettingsTab));
+    propsBody.querySelector("#saveNodeConfigBtn").addEventListener("click", async () => {
+      const r = await safeBridge("updateTeamStep", null, team.id, step.id, {
+        name: propsBody.querySelector("#nodeNameInput").value,
+        nodeType: propsBody.querySelector("#nodeTypeSelect").value,
+        memberId: propsBody.querySelector("#nodeMemberSelect").value,
+        requiresApproval: propsBody.querySelector("#nodeApprovalInput").checked,
+        instruction: propsBody.querySelector("#nodeInstructionInput").value,
+        decisionInstruction: propsBody.querySelector("#nodeDecisionInput").value,
+      });
+      if (r.ok) { toast("已保存", "success"); await refresh(renderSettingsTab); }
+      else toast(r.error || "保存失败", "error");
+    });
+  } else {
+    propsBody.innerHTML = `<div class="slist-sub" style="padding:16px;">点击画布中的节点查看和编辑属性。</div>`;
+  }
+
+  // Execution log tab
+  renderExecutionLogContent(team, run, logBody);
+
+  // Conversation tab - show messages grouped by identity
+  renderConversationTab(team, run, chatBody, deps);
 }
 
-function renderNodeInspector(team, deps) {
-  const { settingsBody, renderSettingsTab } = deps;
-  const step = stepById(team, activeStepId(team));
-  const card = document.createElement("div");
-  card.className = "scard";
-  if (!step) {
-    card.innerHTML = `<div class="scard-head"><span class="scard-title">节点配置</span></div><div class="slist-sub">在画布中选择一个节点进行配置。</div>`;
-    settingsBody.append(card);
+function renderExecutionLogContent(team, run, container) {
+  const history = run.stepHistory || [];
+  const activeStep = run.running ? stepById(team, run.currentStepId) : null;
+
+  if (!history.length && !run.running && !run.error) {
+    container.innerHTML = `
+      <div class="team-log-empty">
+        <div class="team-log-empty-icon">▶</div>
+        <div class="team-log-empty-text">运行工作流后，执行记录会显示在这里</div>
+      </div>`;
     return;
   }
-  card.innerHTML = `
-    <div class="scard-head">
-      <span class="scard-title">节点配置</span>
-      <div class="scard-actions">
-        <button class="st-btn t-btn--link" id="markEntryBtn">设为开始</button>
-        <button class="st-btn t-btn--link" id="markFinalBtn">设为输出</button>
-        <button class="st-btn t-btn--primary t-btn--sm" id="saveNodeConfigBtn">保存</button>
+
+  // Running step
+  if (run.running && activeStep) {
+    const member = memberById(team, activeStep.memberId);
+    const nc = nodeColor(activeStep.nodeType || "work");
+    const row = document.createElement("div");
+    row.className = "team-log-card is-executing";
+    row.innerHTML = `
+      <div class="team-log-card-bar" style="background:${nc.bar};"></div>
+      <div class="team-log-card-head">
+        <div class="team-log-avatar" style="background:${nc.bg};border-color:${nc.border};color:${nc.icon};">${escapeHtml(member?.icon || "ID")}</div>
+        <div class="team-log-info">
+          <span class="team-log-name">${escapeHtml(activeStep.name)}</span>
+          <span class="team-log-meta">${escapeHtml(member?.name || "未绑定")}</span>
+        </div>
+        <span class="team-log-status-badge team-log-status-running">执行中...</span>
+      </div>
+      <div class="team-log-body">
+        <div class="team-log-progress"><div class="team-log-progress-bar"></div></div>
+      </div>
+    `;
+    container.append(row);
+  }
+
+  // Completed steps (newest first)
+  for (const item of [...history].reverse()) {
+    const step = stepById(team, item.stepId);
+    const member = step ? memberById(team, step.memberId) : null;
+    const next = item.nextStepId ? stepById(team, item.nextStepId) : null;
+    const nc = nodeColor(step?.nodeType || "work");
+    const row = document.createElement("div");
+    row.className = `team-log-card${item.status === "error" ? " team-log-error" : ""}`;
+    const preview = item.outputPreview || summarizeText(item.output || item.error, 220);
+    const timeStr = item.timestamp ? new Date(item.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
+    const duration = item.durationMs ? `${Math.round(item.durationMs / 1000)}s` : "";
+    const model = [item.providerName, item.model].filter(Boolean).join(" · ");
+    const route = item.routeCondition ? `${conditionLabel(item.routeCondition)}${next ? ` → ${next.name}` : ""}` : "";
+    const decisionHtml = item.decision ? `<span class="team-log-decision team-log-decision-${item.decision}">${item.decision}</span>` : "";
+    row.innerHTML = `
+      <div class="team-log-card-bar" style="background:${item.status === "error" ? "#ef4444" : nc.bar};opacity:0.5;"></div>
+      <div class="team-log-card-head">
+        <div class="team-log-avatar" style="background:${nc.bg};border-color:${nc.border};color:${nc.icon};">${escapeHtml(member?.icon || "ID")}</div>
+        <div class="team-log-info">
+          <span class="team-log-name">${escapeHtml(step?.name || item.stepId)}</span>
+          <span class="team-log-meta">${escapeHtml(member?.name || "")}${timeStr ? ` · ${timeStr}` : ""}${duration ? ` · ${duration}` : ""}</span>
+        </div>
+        <div class="team-log-badges">
+          ${decisionHtml}
+          <span class="team-log-status-badge ${item.status === "error" ? "team-status-is-error" : "team-log-status-done"}">${item.status === "error" ? "!" : "✓"}</span>
+        </div>
+      </div>
+      <div class="team-log-body">
+        <div class="team-log-evidence">
+          ${model ? `<span>${escapeHtml(model)}</span>` : ""}
+          ${item.identityName ? `<span>${escapeHtml(item.identityName)}</span>` : ""}
+          ${item.cwd ? `<span title="${escapeHtml(item.cwd)}">${escapeHtml(compactPath(item.cwd))}</span>` : ""}
+          ${route ? `<span>${escapeHtml(route)}</span>` : ""}
+        </div>
+        <div class="team-log-preview">${escapeHtml(preview || "--")}</div>
+      </div>
+    `;
+    row.querySelector(".team-log-preview")?.addEventListener("click", () => {
+      row.querySelector(".team-log-preview").classList.toggle("is-expanded");
+    });
+    container.append(row);
+  }
+
+  // Error
+  if (run.error) {
+    const err = document.createElement("div");
+    err.className = "team-log-card team-log-error";
+    err.innerHTML = `
+      <div class="team-log-card-bar" style="background:#ef4444;"></div>
+      <div class="team-log-card-head">
+        <div class="team-log-avatar" style="background:rgba(239,68,68,0.1);border-color:#ef4444;color:#f87171;">✗</div>
+        <div class="team-log-info">
+          <span class="team-log-name">错误</span>
+        </div>
+      </div>
+      <div class="team-log-body">
+        <div class="team-log-preview" style="white-space:normal;color:#f87171;">${escapeHtml(run.error)}</div>
+      </div>
+    `;
+    container.append(err);
+  }
+
+  // Completed
+  if (run.completed && !run.running) {
+    const done = document.createElement("div");
+    done.className = "team-log-card team-log-done";
+    done.innerHTML = `
+      <div class="team-log-card-bar" style="background:#10b981;"></div>
+      <div class="team-log-card-head">
+        <div class="team-log-avatar" style="background:rgba(16,185,129,0.1);border-color:#10b981;color:#34d399;">✓</div>
+        <div class="team-log-info">
+          <span class="team-log-name">工作流已完成</span>
+          <span class="team-log-meta">${history.length} 个步骤</span>
+        </div>
+      </div>
+    `;
+    container.append(done);
+  }
+}
+
+function renderConversationTab(team, run, container, deps) {
+  const conversation = run.conversation || [];
+
+  // Chat messages area
+  const messagesArea = document.createElement("div");
+  messagesArea.className = "team-chat-messages";
+
+  if (!conversation.length && !run.running) {
+    messagesArea.innerHTML = `
+      <div class="team-log-empty">
+        <div class="team-log-empty-icon">💬</div>
+        <div class="team-log-empty-text">输入任务开始对话，每个身份的回复会显示在这里</div>
+      </div>`;
+  } else {
+    // Show each step's conversation as a chat bubble
+  for (const item of [...conversation].reverse()) {
+    const step = stepById(team, item.stepId);
+    const member = step ? memberById(team, step.memberId) : null;
+    const nc = nodeColor(step?.nodeType || "work");
+    const output = String(item.output || "").trim();
+    if (!output) continue;
+
+    const card = document.createElement("div");
+    card.className = "team-chat-card";
+
+    // Header: avatar + name + time
+    const timeStr = item.timestamp ? new Date(item.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : "";
+    const prompt = String(item.prompt || "").trim();
+    const promptPreview = prompt.length > 120 ? prompt.slice(0, 120) + "..." : prompt;
+    card.innerHTML = `
+      <div class="team-chat-head">
+        <div class="team-chat-avatar" style="background:${nc.bg};border-color:${nc.border};color:${nc.icon};">${escapeHtml(member?.icon || "ID")}</div>
+        <div class="team-chat-info">
+          <span class="team-chat-name">${escapeHtml(member?.name || step?.name || "未知")}</span>
+          <span class="team-chat-step">${escapeHtml(step?.name || "")}</span>
+        </div>
+        <span class="team-chat-time">${timeStr}</span>
+      </div>
+      ${promptPreview ? `<div class="team-chat-prompt"><span class="team-chat-prompt-label">任务</span>${escapeHtml(promptPreview)}</div>` : ""}
+      <div class="team-chat-body"></div>
+    `;
+
+    // Render output as markdown-like content
+    const body = card.querySelector(".team-chat-body");
+    const lines = output.split("\n");
+    let inCode = false;
+    let codeBlock = null;
+    for (const line of lines) {
+      if (line.trim().startsWith("```")) {
+        if (inCode && codeBlock) {
+          body.append(codeBlock);
+          codeBlock = null;
+          inCode = false;
+        } else {
+          inCode = true;
+          codeBlock = document.createElement("div");
+          codeBlock.className = "team-chat-code";
+        }
+        continue;
+      }
+      if (inCode && codeBlock) {
+        codeBlock.append(document.createTextNode(line + "\n"));
+      } else {
+        const p = document.createElement("div");
+        p.className = "team-chat-line";
+        p.textContent = line;
+        body.append(p);
+      }
+    }
+    if (codeBlock) body.append(codeBlock);
+
+    // DECISION badge
+    if (item.decision) {
+      const badge = document.createElement("span");
+      badge.className = `team-log-decision team-log-decision-${item.decision}`;
+      badge.textContent = `DECISION: ${item.decision}`;
+      card.querySelector(".team-chat-head").append(badge);
+    }
+
+    messagesArea.append(card);
+  }
+
+  // Currently running step
+  if (run.running) {
+    const activeStep = stepById(team, run.currentStepId);
+    if (activeStep) {
+      const member = memberById(team, activeStep.memberId);
+      const nc = nodeColor(activeStep.nodeType || "work");
+      const card = document.createElement("div");
+      card.className = "team-chat-card is-executing";
+      card.innerHTML = `
+        <div class="team-chat-head">
+          <div class="team-chat-avatar" style="background:${nc.bg};border-color:${nc.border};color:${nc.icon};">${escapeHtml(member?.icon || "ID")}</div>
+          <div class="team-chat-info">
+            <span class="team-chat-name">${escapeHtml(member?.name || "未知")}</span>
+            <span class="team-chat-step">${escapeHtml(activeStep.name)}</span>
+          </div>
+          <span class="team-log-status-badge team-log-status-running">思考中...</span>
+        </div>
+        <div class="team-chat-body">
+          <div class="team-chat-typing"><span></span><span></span><span></span></div>
+        </div>
+      `;
+      messagesArea.append(card);
+    }
+  }
+  }
+
+  container.append(messagesArea);
+
+  // ── Composer (matches main chat style) ──
+  const selectedStep = stepById(team, activeStepId(team));
+  const selectedMember = selectedStep ? memberById(team, selectedStep.memberId) : null;
+  const isSingleNode = selectedMember && !run.running;
+
+  const composerWrap = document.createElement("div");
+  composerWrap.className = "team-chat-composer-wrap";
+  const composer = document.createElement("form");
+  composer.className = "team-chat-composer";
+
+  const targetLabel = isSingleNode
+    ? `<div class="team-chat-target">→ ${escapeHtml(selectedMember.name)} <span class="team-chat-target-step">${escapeHtml(selectedStep.name)}</span></div>`
+    : "";
+
+  composer.innerHTML = `
+    ${targetLabel}
+    <div class="team-chat-composer-top">
+      <textarea class="team-chat-textarea" rows="1" placeholder="${isSingleNode ? `和 ${escapeHtml(selectedMember.name)} 对话...` : "输入任务交给开始身份..."}" ${run.running ? "disabled" : ""}></textarea>
+    </div>
+    <div class="team-chat-composer-foot">
+      <div class="team-chat-foot-left">
+        ${isSingleNode ? `<span class="team-chat-mode-tag">单身份</span>` : `<span class="team-chat-mode-tag">工作流</span>`}
+      </div>
+      <div class="team-chat-foot-right">
+        ${run.running
+          ? `<button type="button" class="team-chat-send-btn is-stop" title="停止"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5"/></svg></button>`
+          : `<button type="submit" class="team-chat-send-btn is-send" title="运行"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8.5 2.5L13.5 8L8.5 13.5M13 8H3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></button>`
+        }
       </div>
     </div>
-    <label class="slist-sub" style="display:block;white-space:normal;margin-top:8px;">名称</label>
-    <input class="team-config-input" id="nodeNameInput" value="${escapeHtml(step.name || "")}">
-    <label class="slist-sub" style="display:block;white-space:normal;margin-top:8px;">组件类型</label>
-    <select class="team-config-select" id="nodeTypeSelect">${nodeTypeOptions(step.nodeType || "work").map(option => `<option value="${option.value}" ${option.selected ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}</select>
-    <label class="slist-sub" style="display:block;white-space:normal;margin-top:8px;">身份</label>
-    <select class="team-config-select" id="nodeMemberSelect">${memberOptions(team, step.memberId || "").map(option => `<option value="${option.value}" ${option.selected ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}</select>
-    <label class="slist-sub" style="display:block;white-space:normal;margin-top:8px;">任务/处理说明</label>
-    <textarea class="team-config-textarea" id="nodeInstructionInput">${escapeHtml(step.instruction || "")}</textarea>
-    <label class="slist-sub" style="display:block;white-space:normal;margin-top:8px;">判断/路由说明</label>
-    <textarea class="team-config-textarea" id="nodeDecisionInput" placeholder="例如：满意输出 DECISION: pass，不满意输出 DECISION: revise">${escapeHtml(step.decisionInstruction || "")}</textarea>
   `;
-  settingsBody.append(card);
-  card.querySelector("#markEntryBtn").addEventListener("click", () => markNode(team, step, "entryStepId", renderSettingsTab));
-  card.querySelector("#markFinalBtn").addEventListener("click", () => markNode(team, step, "finalStepId", renderSettingsTab));
-  card.querySelector("#saveNodeConfigBtn").addEventListener("click", async () => {
-    const r = await safeBridge("updateTeamStep", null, team.id, step.id, {
-      name: card.querySelector("#nodeNameInput").value,
-      nodeType: card.querySelector("#nodeTypeSelect").value,
-      memberId: card.querySelector("#nodeMemberSelect").value,
-      instruction: card.querySelector("#nodeInstructionInput").value,
-      decisionInstruction: card.querySelector("#nodeDecisionInput").value,
-    });
-    if (r.ok) {
-      toast("节点配置已保存", "success");
-      await refresh(renderSettingsTab);
-    } else toast(r.error || "节点保存失败", "error");
+  composerWrap.append(composer);
+  container.append(composerWrap);
+
+  const textarea = composer.querySelector(".team-chat-textarea");
+  function autoSize() {
+    textarea.style.height = "auto";
+    textarea.style.height = Math.min(80, textarea.scrollHeight) + "px";
+  }
+  textarea.addEventListener("input", autoSize);
+
+  composer.addEventListener("submit", e => {
+    e.preventDefault();
+    const val = textarea.value.trim();
+    if (!val) return;
+
+    if (isSingleNode) {
+      // Single identity chat
+      runSingleIdentityChat(team, selectedStep, selectedMember, val, run, deps);
+    } else {
+      // Full workflow
+      run.task = val;
+      save();
+      const entry = stepById(team, team.entryStepId) || team.workflow[0];
+      if (!entry) { toast("请先添加入口节点", "error"); return; }
+      runWorkflow(team, entry.id, val, deps);
+    }
   });
+
+  if (run.running) {
+    composer.querySelector(".team-chat-send-btn").addEventListener("click", e => {
+      e.preventDefault();
+      stopWorkflow(team.id);
+    });
+  }
 }
 
 function renderMindmap(team, deps) {
   const { settingsBody, renderSettingsTab } = deps;
   const run = runState(team.id);
   const activeId = activeStepId(team);
-  const card = document.createElement("div");
-  card.className = "scard team-map-card";
-  card.innerHTML = `
-    <div class="scard-head">
-      <span class="scard-title">身份脑图</span>
-      <div class="scard-actions">
-        <button class="st-btn t-btn--primary t-btn--sm" id="addNodeBtn">添加节点</button>
-        <button class="st-btn t-btn--link" id="addMemberBtn">添加身份</button>
-      </div>
-    </div>
-    <div class="slist-sub">拖动节点排布脑图；点“连接”先选来源，再点目标；入口节点接收你的问题，最终节点给你正式输出。</div>
-  `;
   const canvas = document.createElement("div");
   canvas.className = "team-map-canvas";
-  canvas.style.cssText = "position:relative;height:560px;margin-top:10px;overflow:auto;border:1px solid var(--td-border-level-2-color);background:var(--td-bg-color-container);border-radius:8px;";
+
+  // Zoom wrapper
+  let zoom = 1;
+  const content = document.createElement("div");
+  content.className = "team-map-content";
+  content.style.cssText = `transform-origin:0 0;width:${CANVAS_W}px;height:${CANVAS_H}px;position:relative;`;
+
   const spacer = document.createElement("div");
   spacer.style.cssText = `position:absolute;left:0;top:0;width:${CANVAS_W}px;height:${CANVAS_H}px;pointer-events:none;`;
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("width", String(CANVAS_W));
   svg.setAttribute("height", String(CANVAS_H));
   svg.style.cssText = "position:absolute;left:0;top:0;pointer-events:none;";
-  canvas.append(spacer, svg);
+  // Arrow markers for different edge types
+  const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+  defs.innerHTML = `
+    <marker id="arrow_default" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#475569" /></marker>
+    <marker id="arrow_pass" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#10b981" /></marker>
+    <marker id="arrow_approve" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#10b981" /></marker>
+    <marker id="arrow_yes" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#10b981" /></marker>
+    <marker id="arrow_revise" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#ef4444" /></marker>
+    <marker id="arrow_reject" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#ef4444" /></marker>
+    <marker id="arrow_no" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#ef4444" /></marker>
+  `;
+  svg.append(defs);
+  content.append(spacer, svg);
+  canvas.append(content);
+
+  // Zoom controls
+  const zoomBar = document.createElement("div");
+  zoomBar.className = "team-zoom-bar";
+  const zoomLabel = document.createElement("span");
+  zoomLabel.className = "team-zoom-label";
+  zoomLabel.textContent = "100%";
+  function applyZoom() {
+    content.style.transform = `scale(${zoom})`;
+    content.style.width = `${CANVAS_W * zoom}px`;
+    content.style.height = `${CANVAS_H * zoom}px`;
+    zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
+  }
+  const zoomIn = document.createElement("button");
+  zoomIn.className = "team-zoom-btn";
+  zoomIn.textContent = "+";
+  zoomIn.title = "放大";
+  zoomIn.addEventListener("click", () => { zoom = Math.min(2, zoom + 0.15); applyZoom(); });
+  const zoomOut = document.createElement("button");
+  zoomOut.className = "team-zoom-btn";
+  zoomOut.textContent = "−";
+  zoomOut.title = "缩小";
+  zoomOut.addEventListener("click", () => { zoom = Math.max(0.3, zoom - 0.15); applyZoom(); });
+  const zoomReset = document.createElement("button");
+  zoomReset.className = "team-zoom-btn";
+  zoomReset.textContent = "⊙";
+  zoomReset.title = "重置";
+  zoomReset.addEventListener("click", () => { zoom = 1; applyZoom(); });
+  zoomBar.append(zoomOut, zoomLabel, zoomIn, zoomReset);
+  canvas.append(zoomBar);
+
+  // Scroll wheel zoom
+  canvas.addEventListener("wheel", e => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      zoom = Math.min(2, Math.max(0.3, zoom + delta));
+      applyZoom();
+    }
+  }, { passive: false });
+
   canvas.addEventListener("dragover", event => {
     if (event.dataTransfer?.types?.includes("text/team-node-type") || event.dataTransfer?.types?.includes("text/team-member-id")) event.preventDefault();
   });
@@ -764,10 +1512,9 @@ function renderMindmap(team, deps) {
     if (!type && !memberId) return;
     event.preventDefault();
     const rect = canvas.getBoundingClientRect();
-    const position = {
-      x: Math.max(20, event.clientX - rect.left + canvas.scrollLeft),
-      y: Math.max(20, event.clientY - rect.top + canvas.scrollTop),
-    };
+    const rawX = event.clientX - rect.left + canvas.scrollLeft;
+    const rawY = event.clientY - rect.top + canvas.scrollTop;
+    const position = { x: Math.max(20, rawX / zoom), y: Math.max(20, rawY / zoom) };
     if (memberId) addNodeFromMember(team, memberId, position, renderSettingsTab);
     else addNodeFromComponent(team, type, position, renderSettingsTab);
   });
@@ -790,74 +1537,140 @@ function renderMindmap(team, deps) {
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
   });
-  card.append(canvas);
-  settingsBody.append(card);
+  settingsBody.append(canvas);
 
-  card.querySelector("#addNodeBtn").addEventListener("click", () => nodeDlg(team, null, renderSettingsTab));
-  card.querySelector("#addMemberBtn").addEventListener("click", () => memberDlg(team, null, renderSettingsTab));
+  function edgeStyle(condition) {
+    const styles = {
+      default: { color: "#475569", dash: "", width: 1.5 },
+      pass: { color: "#10b981", dash: "", width: 1.5 },
+      approve: { color: "#10b981", dash: "", width: 1.5 },
+      yes: { color: "#10b981", dash: "", width: 1.5 },
+      revise: { color: "#ef4444", dash: "6,3", width: 1.5 },
+      reject: { color: "#ef4444", dash: "6,3", width: 1.5 },
+      no: { color: "#ef4444", dash: "6,3", width: 1.5 },
+    };
+    return styles[condition] || styles.default;
+  }
 
   function drawEdges() {
-    svg.innerHTML = workflowEdges(team).map(edge => {
+    const edges = workflowEdges(team);
+    let html = defs.outerHTML;
+    // Draw flow animation dots for running edges
+    const activeEdges = [];
+    if (run.running && run.currentStepId) {
+      for (const edge of edges) {
+        if (edge.to === run.currentStepId || edge.from === run.currentStepId) {
+          activeEdges.push(edge);
+        }
+      }
+    }
+    for (const edge of edges) {
       const from = stepById(team, edge.from);
       const to = stepById(team, edge.to);
-      if (!from || !to) return "";
+      if (!from || !to) continue;
       const x1 = (from.x || 0) + NODE_W;
       const y1 = (from.y || 0) + NODE_H / 2;
       const x2 = to.x || 0;
       const y2 = (to.y || 0) + NODE_H / 2;
-      const mid = Math.max(40, Math.abs(x2 - x1) / 2);
-      const d = `M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`;
-      const labelX = (x1 + x2) / 2;
-      const labelY = (y1 + y2) / 2 - 8;
-      return `<path d="${d}" fill="none" stroke="var(--td-brand-color)" stroke-width="2"/><circle cx="${x2}" cy="${y2}" r="4" fill="var(--td-brand-color)"/><text x="${labelX}" y="${labelY}" font-size="11" fill="currentColor">${conditionLabel(edge.condition)}</text>`;
-    }).join("");
+      const dx = Math.abs(x2 - x1);
+      const dy = Math.abs(y2 - y1);
+      const cp = Math.max(50, dx * 0.5);
+      const d = `M ${x1} ${y1} C ${x1 + cp} ${y1}, ${x2 - cp} ${y2}, ${x2} ${y2}`;
+      const es = edgeStyle(edge.condition);
+      const isActive = activeEdges.some(e => e.id === edge.id);
+      const strokeOpacity = isActive ? "1" : "0.6";
+      const markerId = `arrow_${edge.condition || "default"}`;
+      html += `<path d="${d}" fill="none" stroke="${es.color}" stroke-width="${es.width}"${es.dash ? ` stroke-dasharray="${es.dash}"` : ""} marker-end="url(#${markerId})" opacity="${strokeOpacity}"/>`;
+      // Label
+      const label = conditionLabel(edge.condition);
+      if (label !== "默认") {
+        const lx = (x1 + x2) / 2;
+        const ly = (y1 + y2) / 2 - 12;
+        const labelBg = edge.condition === "revise" || edge.condition === "reject" || edge.condition === "no" ? "rgba(239,68,68,0.12)" : edge.condition === "pass" || edge.condition === "approve" || edge.condition === "yes" ? "rgba(16,185,129,0.12)" : "rgba(100,116,139,0.12)";
+        const labelColor = es.color;
+        html += `<rect x="${lx - 18}" y="${ly - 8}" width="36" height="16" rx="3" fill="${labelBg}" />`;
+        html += `<text x="${lx}" y="${ly + 4}" font-size="10" fill="${labelColor}" text-anchor="middle" font-weight="500">${label}</text>`;
+      }
+      // Flow dots for active edges
+      if (isActive) {
+        html += `<circle r="3" fill="${es.color}" opacity="0.9"><animateMotion dur="1.5s" repeatCount="indefinite" path="${d}" /></circle>`;
+        html += `<circle r="2" fill="${es.color}" opacity="0.5"><animateMotion dur="1.5s" repeatCount="indefinite" path="${d}" begin="0.3s" /></circle>`;
+      }
+    }
+    svg.innerHTML = html;
   }
 
   for (const step of team.workflow) {
     const member = memberById(team, step.memberId);
     const done = Boolean(run.outputs?.[step.id]);
+    const isCurrentRunning = run.running && step.id === run.currentStepId;
+    const isActive = step.id === activeId;
+    const nc = nodeColor(step.nodeType || "work");
     const node = document.createElement("div");
-    node.className = "team-node-card";
-    node.style.cssText = `position:absolute;left:${step.x || 80}px;top:${step.y || 80}px;width:${NODE_W}px;min-height:${NODE_H}px;padding:10px;border:1px solid ${step.id === activeId ? "var(--td-brand-color)" : "var(--td-border-level-2-color)"};border-radius:8px;background:var(--td-bg-color-container);box-shadow:var(--td-shadow-1);cursor:grab;z-index:2;`;
+    node.className = `team-node-card${isCurrentRunning ? " is-running" : ""}${done ? " is-done" : ""}${isActive ? " is-selected" : ""}`;
+    node.style.cssText = `position:absolute;left:${step.x || 80}px;top:${step.y || 80}px;width:${NODE_W}px;min-height:${NODE_H}px;`;
+    const statusClass = isCurrentRunning ? "is-running" : done ? "is-done" : "is-idle";
+    const statusText = isCurrentRunning ? "执行中" : done ? "已完成" : "等待中";
+    const providerLabel = member?.providerId ? data.providers.find(p => p.id === member.providerId)?.model || "" : "";
+    const typeName = nodeTypeOptions(step.nodeType || "work").find(item => item.value === (step.nodeType || "work"))?.label || "执行";
+    const isEntry = step.id === team.entryStepId;
+    const isFinal = step.id === team.finalStepId;
+    const badgeHtml = isEntry ? '<span class="team-node-badge team-node-badge-entry">入口</span>' : isFinal ? '<span class="team-node-badge team-node-badge-final">输出</span>' : "";
+    const instructPreview = (step.instruction || typeName).slice(0, 24);
     node.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;">
-        <div class="slist-icon">${escapeHtml(member?.icon || "ID")}</div>
-        <div style="min-width:0;">
-          <div class="slist-name">${escapeHtml(step.name)}</div>
-          <div class="slist-sub">${escapeHtml(memberLabel(team, step.memberId))}</div>
+      <div class="team-node-bar" style="background:${nc.bar};"></div>
+      <div class="team-node-port team-node-port-in" title="输入"></div>
+      <div class="team-node-port team-node-port-out" title="输出"></div>
+      <div class="team-node-body">
+        <div class="team-node-head">
+          <div class="team-node-avatar" style="background:${nc.bg};border-color:${nc.border};color:${nc.icon};">${escapeHtml(member?.icon || "ID")}</div>
+          <div class="team-node-info">
+            <div class="team-node-name">${escapeHtml(step.name)}${badgeHtml}</div>
+            <div class="team-node-meta"><span class="team-node-status ${statusClass}"></span>${escapeHtml(statusText)}${providerLabel ? ` · ${escapeHtml(providerLabel)}` : ""}</div>
+          </div>
         </div>
-      </div>
-      <div class="slist-sub" style="margin-top:6px;">${escapeHtml(nodeTypeOptions(step.nodeType || "work").find(item => item.value === (step.nodeType || "work"))?.label || "执行处理")} · ${escapeHtml(step.instruction || "未填写节点指令")}</div>
-      <div class="slist-sub" style="margin-top:6px;">${step.id === team.entryStepId ? "入口 " : ""}${step.id === team.finalStepId ? "最终 " : ""}${done ? "已采纳" : "待处理"}</div>
-      <div class="slist-actions" style="margin-top:8px;">
-        <button class="st-btn t-btn--primary t-btn--sm" data-act="run">运行</button>
-        <button class="st-btn t-btn--link" data-act="connect">连接</button>
-        <button class="st-btn t-btn--danger t-btn--sm" data-act="delete">删除</button>
+        <div class="team-node-preview">${escapeHtml(instructPreview)}</div>
       </div>
     `;
-    node.querySelector('[data-act="run"]').addEventListener("click", event => { event.stopPropagation(); prepareNode(team, step, deps); });
-    node.querySelector('[data-act="connect"]').addEventListener("click", event => {
-      event.stopPropagation();
-      if (!state.teamConnectFrom) {
-        state.teamConnectFrom = step.id;
+    // Click to select
+    node.addEventListener("click", event => {
+      if (event.target.closest("button") || event.target.closest(".team-node-port")) return;
+      if (!run.running) {
+        run.currentStepId = step.id;
+        run.updatedAt = Date.now();
         save();
-        toast(`连接起点：${step.name}。再点目标节点的“连接”。`, "info");
-        return;
       }
-      const fromId = state.teamConnectFrom;
-      state.teamConnectFrom = "";
-      save();
-      connectNodes(team, fromId, step.id, renderSettingsTab);
-    });
-    node.querySelector('[data-act="delete"]').addEventListener("click", event => { event.stopPropagation(); deleteNodeDlg(team, step, renderSettingsTab); });
-    node.addEventListener("click", () => {
-      run.currentStepId = step.id;
-      run.updatedAt = Date.now();
-      save();
       renderSettingsTab();
     });
+    // Port click: start/end connection
+    node.querySelector(".team-node-port-in")?.addEventListener("click", event => {
+      event.stopPropagation();
+      if (state.teamConnectFrom) {
+        const fromId = state.teamConnectFrom;
+        state.teamConnectFrom = "";
+        save();
+        connectNodes(team, fromId, step.id, renderSettingsTab);
+      }
+    });
+    node.querySelector(".team-node-port-out")?.addEventListener("click", event => {
+      event.stopPropagation();
+      state.teamConnectFrom = step.id;
+      save();
+      toast(`起点：${step.name}。点击目标节点的输入端口连接。`, "info");
+    });
+    // Right-click context
+    node.addEventListener("contextmenu", event => {
+      event.preventDefault();
+      const fromId = state.teamConnectFrom;
+      if (fromId && fromId !== step.id) {
+        state.teamConnectFrom = "";
+        save();
+        connectNodes(team, fromId, step.id, renderSettingsTab);
+      }
+    });
+    // Drag to move
     node.addEventListener("pointerdown", event => {
-      if (event.target.closest("button")) return;
+      if (event.target.closest("button") || event.target.closest(".team-node-port")) return;
       const startX = event.clientX;
       const startY = event.clientY;
       const originX = step.x || 0;
@@ -879,131 +1692,209 @@ function renderMindmap(team, deps) {
       document.addEventListener("pointermove", onMove);
       document.addEventListener("pointerup", onUp);
     });
-    canvas.append(node);
+    content.append(node);
   }
   drawEdges();
-}
 
-function renderMembers(team, deps) {
-  const { settingsBody, renderSettingsTab } = deps;
-  const card = document.createElement("div");
-  card.className = "scard";
-  card.innerHTML = `
-    <div class="scard-head">
-      <span class="scard-title">身份库</span>
-      <div class="scard-actions"><button class="st-btn t-btn--primary t-btn--sm" id="addMemberFromLibraryBtn">添加身份</button></div>
-    </div>
-    <div class="slist-sub" style="white-space:normal;margin-bottom:8px;">拖到画布即可生成绑定身份的处理节点。</div>
-    <div class="team-member-palette"></div>
-  `;
-  settingsBody.append(card);
-  card.querySelector("#addMemberFromLibraryBtn").addEventListener("click", () => memberDlg(team, null, renderSettingsTab));
-  const list = card.querySelector(".team-member-palette");
-  for (const member of team.members) {
-    const row = document.createElement("div");
-    row.className = "team-member-chip";
-    row.draggable = true;
-    row.innerHTML = `
-      <div class="slist-icon">${escapeHtml(member.icon || "ID")}</div>
-      <div class="slist-body">
-        <div class="slist-name">${escapeHtml(member.name)}</div>
-        <div class="slist-sub">${escapeHtml(member.role || "")}</div>
-        <div class="slist-sub">${escapeHtml(providerName(member.providerId))} / ${escapeHtml(identityName(member.identityId))}</div>
-      </div>
-      <div class="slist-actions">
-        <button class="st-btn t-btn--link" data-act="edit">编辑</button>
-        <button class="st-btn t-btn--danger t-btn--sm" data-act="delete">删除</button>
-      </div>
-    `;
-    row.addEventListener("click", event => {
-      if (event.target.closest("button[data-act]")) return;
-      addNodeFromMember(team, member.id, null, renderSettingsTab);
-    });
-    row.addEventListener("dragstart", event => {
-      event.dataTransfer?.setData("text/team-member-id", member.id);
-      event.dataTransfer?.setData("text/plain", member.id);
-    });
-    row.querySelector('[data-act="edit"]').addEventListener("click", event => { event.stopPropagation(); memberDlg(team, member, renderSettingsTab); });
-    row.querySelector('[data-act="delete"]').addEventListener("click", event => { event.stopPropagation(); deleteMemberDlg(team, member, renderSettingsTab); });
-    list.append(row);
-  }
-  if (!team.members.length) {
-    const empty = document.createElement("div");
-    empty.className = "slist-sub";
-    empty.style.whiteSpace = "normal";
-    empty.textContent = "还没有身份。先添加项目经理、开发、测试等身份，再拖到画布。";
-    list.append(empty);
-  }
-}
-
-function renderEdges(team, deps) {
-  const { settingsBody, renderSettingsTab } = deps;
-  const card = document.createElement("div");
-  card.className = "scard";
-  const options = stepOptions(team);
-  card.innerHTML = `
-    <div class="scard-head"><span class="scard-title">交接线</span></div>
-    <div class="team-edge-builder">
-      <select class="team-config-select" id="edgeFromSelect">${options.map(option => `<option value="${option.value}">${escapeHtml(option.label)}</option>`).join("")}</select>
-      <select class="team-config-select" id="edgeToSelect">${options.map(option => `<option value="${option.value}">${escapeHtml(option.label)}</option>`).join("")}</select>
-      <select class="team-config-select" id="edgeConditionSelect">${conditionOptions("default").map(option => `<option value="${option.value}">${escapeHtml(option.label)}</option>`).join("")}</select>
-      <input class="team-config-input" id="edgeLabelInput" placeholder="交接说明，例如：测试不满意返工">
-      <button class="st-btn t-btn--primary t-btn--sm" id="quickAddEdgeBtn" type="button">添加连线</button>
-    </div>
-    <div class="slist-sub" style="white-space:normal;margin-top:8px;">条件连线用于循环：例如测试 revise 回开发，pass 到项目经理。</div>
-  `;
-  settingsBody.append(card);
-  card.querySelector("#quickAddEdgeBtn").addEventListener("click", async () => {
-    const from = card.querySelector("#edgeFromSelect").value;
-    const to = card.querySelector("#edgeToSelect").value;
-    const condition = card.querySelector("#edgeConditionSelect").value || "default";
-    const label = card.querySelector("#edgeLabelInput").value || "";
-    if (!from || !to || from === to) {
-      toast("请选择不同的来源和目标节点", "error");
-      return;
+  // Keyboard shortcuts on canvas
+  canvas.setAttribute("tabindex", "0");
+  canvas.addEventListener("keydown", event => {
+    const selStep = stepById(team, activeStepId(team));
+    if (event.key === "Delete" || event.key === "Backspace") {
+      if (selStep) {
+        event.preventDefault();
+        // Shake animation before delete
+        const el = canvas.querySelector(".team-node-card.is-selected");
+        if (el) {
+          el.classList.add("is-deleting");
+          setTimeout(() => deleteNodeDlg(team, selStep, renderSettingsTab), 200);
+        } else {
+          deleteNodeDlg(team, selStep, renderSettingsTab);
+        }
+      }
     }
-    const edges = workflowEdges(team);
-    if (edges.some(edge => edge.from === from && edge.to === to && edge.condition === condition)) {
-      toast("这条连线已存在", "info");
-      return;
+    if (event.key === "Escape") {
+      state.teamConnectFrom = "";
+      run.currentStepId = "";
+      save();
+      renderSettingsTab();
     }
-    await saveGraph(team, { workflowEdges: [...edges, { from, to, condition, label }] }, renderSettingsTab);
+    if (event.key === "r" || event.key === "R") {
+      if (!event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        if (run.running) { stopWorkflow(team.id); }
+        else {
+          const entry = stepById(team, team.entryStepId) || team.workflow[0];
+          if (entry && run.task?.trim()) runWorkflow(team, entry.id, run.task, deps);
+        }
+      }
+    }
   });
-  for (const edge of workflowEdges(team)) {
-    const row = document.createElement("div");
-    row.className = "slist-item team-edge-row";
-    row.innerHTML = `
-      <div class="slist-icon">→</div>
-      <div class="slist-body">
-        <div class="slist-name">${escapeHtml(stepById(team, edge.from)?.name || "未知")} → ${escapeHtml(stepById(team, edge.to)?.name || "未知")}</div>
-        <div class="slist-sub">${escapeHtml(conditionLabel(edge.condition))}${edge.label ? ` · ${escapeHtml(edge.label)}` : ""}</div>
-      </div>
-      <div class="slist-actions"><button class="st-btn t-btn--danger t-btn--sm" data-act="delete">删除</button></div>
-    `;
-    row.querySelector('[data-act="delete"]').addEventListener("click", () => deleteEdge(team, edge, renderSettingsTab));
-    settingsBody.append(row);
-  }
 }
+
+function makeCollapsible(title, contentFn, defaultOpen = true) {
+  const card = document.createElement("div");
+  card.className = "scard";
+  const head = document.createElement("div");
+  head.className = `scard-head team-collapsible-head${defaultOpen ? " is-open" : ""}`;
+  head.innerHTML = `<span class="scard-title">${escapeHtml(title)}</span><span class="team-collapse-icon">▸</span>`;
+  const body = document.createElement("div");
+  body.className = "team-collapsible-body";
+  body.style.display = defaultOpen ? "" : "none";
+  contentFn(body);
+  head.addEventListener("click", () => {
+    const open = body.style.display === "none";
+    body.style.display = open ? "" : "none";
+    head.classList.toggle("is-open", open);
+  });
+  card.append(head, body);
+  return card;
+}
+
 
 function renderTeamDetail(team, deps) {
-  const { settingsBody } = deps;
+  const { settingsBody, renderSettingsTab } = deps;
+  const run = runState(team.id);
   const workbench = document.createElement("div");
   workbench.className = "team-workbench";
-  const left = document.createElement("div");
+
+  // ── Left sidebar (collapsible) ──
+  const sidebar = document.createElement("div");
+  sidebar.className = "team-sidebar";
+  const toggleBtn = document.createElement("button");
+  toggleBtn.className = "team-sidebar-toggle";
+  toggleBtn.textContent = "☰";
+  toggleBtn.title = "展开/折叠";
+  const sidebarItems = document.createElement("div");
+  sidebarItems.className = "team-sidebar-items";
+  sidebar.append(toggleBtn, sidebarItems);
+
+  // Sidebar toggle
+  toggleBtn.addEventListener("click", () => {
+    sidebar.classList.toggle("is-expanded");
+  });
+
+  // Populate sidebar with collapsible sections
+  function makeSidebarSection(title, items, defaultOpen = true) {
+    const sec = document.createElement("div");
+    sec.className = "team-sidebar-section";
+    const head = document.createElement("div");
+    head.className = `team-sidebar-head${defaultOpen ? " is-open" : ""}`;
+    head.innerHTML = `<span class="team-sidebar-label">${escapeHtml(title)}</span><span class="team-sidebar-arrow">▸</span>`;
+    const body = document.createElement("div");
+    body.className = "team-sidebar-body";
+    body.style.display = defaultOpen ? "" : "none";
+    for (const fn of items) fn(body);
+    head.addEventListener("click", () => {
+      const open = body.style.display === "none";
+      body.style.display = open ? "" : "none";
+      head.classList.toggle("is-open", open);
+    });
+    sec.append(head, body);
+    return sec;
+  }
+
+  sidebarItems.append(makeSidebarSection("身份", [body => {
+    for (const member of team.members) {
+      const item = document.createElement("div");
+      item.className = "team-sidebar-item";
+      item.draggable = true;
+      item.innerHTML = `<div class="team-sidebar-icon" style="background:var(--td-bg-color-container-active);color:var(--td-text-color-secondary);">${escapeHtml(member.icon || "ID")}</div><span class="team-sidebar-label">${escapeHtml(member.name)}</span>`;
+      item.addEventListener("click", () => addNodeFromMember(team, member.id, null, renderSettingsTab));
+      item.addEventListener("dragstart", e => {
+        e.dataTransfer?.setData("text/team-member-id", member.id);
+        e.dataTransfer?.setData("text/plain", member.id);
+      });
+      body.append(item);
+    }
+    if (!team.members.length) {
+      const empty = document.createElement("div");
+      empty.className = "team-sidebar-label";
+      empty.style.cssText = "padding:4px 8px;font-size:10px;color:var(--td-text-color-disabled);";
+      empty.textContent = "暂无身份";
+      body.append(empty);
+    }
+  }], true));
+
+  sidebarItems.append(makeSidebarSection("组件", [body => {
+    for (const comp of COMPONENTS) {
+      const item = document.createElement("div");
+      item.className = "team-sidebar-item";
+      item.draggable = true;
+      item.innerHTML = `<div class="team-sidebar-icon" style="background:${comp.color}22;color:${comp.color};">${escapeHtml(comp.icon)}</div><span class="team-sidebar-label">${escapeHtml(comp.name)}</span>`;
+      item.addEventListener("click", () => addNodeFromComponent(team, comp.type, null, renderSettingsTab));
+      item.addEventListener("dragstart", e => {
+        e.dataTransfer?.setData("text/team-node-type", comp.type);
+        e.dataTransfer?.setData("text/plain", comp.type);
+      });
+      body.append(item);
+    }
+  }], true));
+
+  // ── Center: topbar + canvas + composer ──
   const center = document.createElement("div");
-  const right = document.createElement("div");
-  left.className = "team-panel";
-  center.className = "team-panel";
-  right.className = "team-panel";
-  workbench.append(left, center, right);
-  settingsBody.append(workbench);
-  renderTeamList({ ...deps, settingsBody: left });
-  renderComponentPalette(team, { ...deps, settingsBody: left });
-  renderMembers(team, { ...deps, settingsBody: left });
+  center.className = "team-panel-center";
+
+  // Top bar (minimal)
+  const topbar = document.createElement("div");
+  topbar.className = "team-topbar";
+  const doneCount = Object.keys(run.outputs || {}).length;
+  const totalCount = team.workflow.filter(s => s.nodeType !== "start").length;
+  const projectPath = team.cwd || state.cwd || "";
+  const shortPath = projectPath ? (projectPath.length > 30 ? "..." + projectPath.slice(-27) : projectPath) : "未设置项目";
+  topbar.innerHTML = `
+    <select class="team-topbar-select" id="teamSelect">${data.teams.map(t => `<option value="${t.id}" ${t.id === team.id ? "selected" : ""}>${escapeHtml(t.name)}</option>`).join("")}</select>
+    <span class="team-topbar-path" title="${escapeHtml(projectPath)}">📁 ${escapeHtml(shortPath)}</span>
+    <span class="team-topbar-info">${team.members.length} 身份 · ${team.workflow.length} 节点${run.running ? ` · ${doneCount}/${totalCount}` : ""}</span>
+    <button class="team-composer-btn" id="editTeamBtn" title="设置">⚙</button>
+  `;
+  topbar.querySelector("#teamSelect")?.addEventListener("change", e => {
+    state.selectedTeamId = e.target.value;
+    save();
+    renderSettingsTab();
+  });
+  topbar.querySelector("#editTeamBtn")?.addEventListener("click", () => editTeamDlg(team, renderSettingsTab));
+  center.append(topbar);
+
+  // Canvas
   renderMindmap(team, { ...deps, settingsBody: center });
-  renderHeader(team, { ...deps, settingsBody: right });
-  renderNodeInspector(team, { ...deps, settingsBody: right });
-  renderEdges(team, { ...deps, settingsBody: right });
+
+  // Bottom composer
+  const composer = document.createElement("div");
+  composer.className = "team-composer";
+  composer.innerHTML = `
+    <input class="team-composer-input" id="teamTaskInput" placeholder="输入任务描述..." value="${escapeHtml(run.task || "")}">
+    <button class="team-composer-btn" id="resetRunBtn" title="清空">↺</button>
+    ${run.running
+      ? `<button class="team-run-btn is-stop" id="stopWorkflowBtn" title="停止">■</button>`
+      : `<button class="team-run-btn" id="startFlowBtn" title="运行">▶</button>`
+    }
+  `;
+  composer.querySelector("#teamTaskInput")?.addEventListener("input", e => {
+    run.task = e.target.value || "";
+    run.updatedAt = Date.now();
+    save();
+  });
+  if (run.running) {
+    composer.querySelector("#stopWorkflowBtn")?.addEventListener("click", () => stopWorkflow(team.id));
+  } else {
+    composer.querySelector("#startFlowBtn")?.addEventListener("click", () => {
+      const entry = stepById(team, team.entryStepId) || team.workflow[0];
+      if (!entry) { toast("请先添加入口节点", "error"); return; }
+      if (!run.task?.trim()) { toast("请先输入任务", "error"); return; }
+      runWorkflow(team, entry.id, run.task, deps);
+    });
+    composer.querySelector("#resetRunBtn")?.addEventListener("click", () => resetRun(team, renderSettingsTab));
+  }
+  center.append(composer);
+
+  // ── Right panel ──
+  const right = document.createElement("div");
+  right.className = "team-panel-right";
+  renderRightPanel(team, { ...deps, settingsBody: right });
+
+  workbench.append(sidebar, center, right);
+  settingsBody.append(workbench);
 }
 
 export function renderTeamsSettings(deps) {

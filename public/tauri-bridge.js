@@ -79,6 +79,17 @@
     deleteTeamStep: "teams:deleteStep",
     updateTeamWorkflow: "teams:updateWorkflow",
     composeTeamStepPrompt: "teams:composeStepPrompt",
+    listAgentTasks: "agentTasks:list",
+    createAgentTask: "agentTasks:create",
+    createAgentTaskBatch: "agentTasks:createBatch",
+    updateAgentTask: "agentTasks:update",
+    deleteAgentTask: "agentTasks:delete",
+    prepareAgentTask: "agentTasks:prepare",
+    collectAgentTaskEvidence: "agentTasks:collectEvidence",
+    commitAgentTask: "agentTasks:commit",
+    discardAgentTaskChanges: "agentTasks:discardChanges",
+    planAgentTaskQueue: "agentTasks:planQueue",
+    exportAgentTaskAudit: "agentTasks:exportAudit",
     detectClaude: "claude:detect",
     getClaudeSetup: "claude:getSetup",
     dismissSetup: "claude:dismissSetup",
@@ -145,6 +156,7 @@
   bridge.minimizeWindow = () => tauriInvoke()?.("minimize_window") || Promise.resolve({ ok: false });
   bridge.toggleMaximizeWindow = () => tauriInvoke()?.("toggle_maximize_window") || Promise.resolve({ ok: false });
   bridge.closeWindow = () => tauriInvoke()?.("close_window") || Promise.resolve({ ok: false });
+  bridge.openWorkspaceWindow = (value = "") => tauriInvoke()?.("open_workspace_window", { value }) || Promise.resolve({ ok: false });
 
   bridge.onClaudeEvent = on("claude:event");
   bridge.onClaudeStderr = on("claude:stderr");

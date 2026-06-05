@@ -70,7 +70,7 @@ function normalizeStep(step = {}, index = 0) {
     nodeType: text(step.nodeType, "work") || "work",
     instruction: text(step.instruction),
     decisionInstruction: text(step.decisionInstruction),
-    requiresApproval: bool(step.requiresApproval, true),
+    requiresApproval: bool(step.requiresApproval, false),
     inputMode: text(step.inputMode, "task-and-previous") || "task-and-previous",
     x: number(step.x, 80 + (index % 4) * 220),
     y: number(step.y, 80 + Math.floor(index / 4) * 150),
@@ -108,6 +108,7 @@ function normalizeTeam(team = {}) {
     name: text(team.name, "New team"),
     description: text(team.description),
     rules: text(team.rules),
+    cwd: text(team.cwd),
     members,
     workflow,
     workflowEdges,
@@ -134,6 +135,7 @@ export function createTeam(input = {}) {
     name: input.name || "New team",
     description: input.description || "",
     rules: input.rules || "",
+    cwd: input.cwd || "",
     members: input.members || [],
     workflow: input.workflow || [],
     workflowEdges: input.workflowEdges,
@@ -150,7 +152,7 @@ export function createTeam(input = {}) {
 export function updateTeam(teamId, updates = {}) {
   const store = readStore();
   const team = findTeam(store, teamId);
-  for (const key of ["name", "description", "rules", "entryStepId", "finalStepId"]) {
+  for (const key of ["name", "description", "rules", "entryStepId", "finalStepId", "cwd"]) {
     if (updates[key] !== undefined) team[key] = text(updates[key]);
   }
   team.updatedAt = now();
@@ -301,6 +303,20 @@ export function composeTeamStepPrompt({ teamId, stepId, task = "", previousOutpu
     .join(", ");
   const conditionalRoutes = nextSteps.filter(item => item.edge.condition && item.edge.condition !== "default");
   const conditionList = [...new Set(conditionalRoutes.map(item => item.edge.condition))].join(", ");
+  const handoffContract = nextSteps.length
+    ? [
+        "Handoff contract:",
+        "- End with a short handoff section that names completed work, evidence, risks, and the next recommended route.",
+        conditionalRoutes.length
+          ? `- If routing is required, include a final line exactly like one available condition: DECISION: ${conditionalRoutes[0].edge.condition}.`
+          : "- If no routing decision is required, do not invent a DECISION line.",
+        "- When useful, include a compact JSON block named TEAM_HANDOFF_JSON with keys: summary, evidence, risks, decision.",
+      ].join("\n")
+    : [
+        "Final delivery contract:",
+        "- Produce the user-facing result directly.",
+        "- Include what changed, what was verified, and any remaining risk.",
+      ].join("\n");
   const finalInstruction = step.id === team.finalStepId
     ? nextSteps.length
       ? "This is a final review node with mapped handoff routes. Decide whether the work is ready or must be reworked, then follow the available route conditions."
@@ -320,6 +336,7 @@ export function composeTeamStepPrompt({ teamId, stepId, task = "", previousOutpu
     finalInstruction,
     nextSteps.length ? `Available handoff routes: ${nextLabel}.` : "This is the final mapped step. Produce a final, user-facing answer when ready.",
     conditionalRoutes.length ? `If this step is deciding a route, include a final line exactly like one of the available conditions: ${conditionList}. Example: DECISION: ${conditionalRoutes[0].edge.condition}.` : "",
+    handoffContract,
     "Return only the useful deliverable for this step. If something is missing, state the blocker clearly.",
   ].filter(Boolean);
   return { team, step, member, nextSteps: nextSteps.map(item => item.step), nextEdges: nextSteps.map(item => item.edge), prompt: lines.join("\n\n") };

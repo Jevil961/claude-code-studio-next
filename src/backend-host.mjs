@@ -17,8 +17,9 @@ const { getDb } = await import("./db/connection.js");
 const { categorizeAllSkills, CATEGORIES } = await import("./skill-categories.js");
 const identities = await import("./identities.js");
 const teams = await import("./teams.js");
+const agentTasks = await import("./agent-tasks.js");
 const { PROVIDER_PRESETS, API_FORMATS } = await import("./provider-presets.js");
-const { assertInsidePath, safeReadTextFile, validatePluginInstallName } = await import("./path-security.js");
+const { assertInsidePath, assertNotSymlink, assertRealInsidePath, safeReadTextFile, validatePluginInstallName } = await import("./path-security.js");
 
 let dbReady = false;
 let projectIndexRunning = false;
@@ -134,6 +135,7 @@ const handlers = {
       providers: providers.list(),
       identities: identities.getIdentities(),
       teams: teams.listTeams(),
+      agentTasks: agentTasks.listAgentTasks(),
       projects: projectsModule.listProjects(),
       runners: runner.listRunners(),
     });
@@ -232,6 +234,17 @@ const handlers = {
   deleteTeamStep: (teamId, stepId) => ok(teams.deleteTeamStep(teamId, stepId)),
   updateTeamWorkflow: (teamId, updates) => ok(teams.updateTeamWorkflow(teamId, updates)),
   composeTeamStepPrompt: (payload) => ok(teams.composeTeamStepPrompt(payload)),
+  listAgentTasks: () => ok(agentTasks.listAgentTasks()),
+  createAgentTask: (data) => ok(agentTasks.createAgentTask(data)),
+  createAgentTaskBatch: (data) => ok(agentTasks.createAgentTaskBatch(data)),
+  updateAgentTask: (taskId, updates) => ok(agentTasks.updateAgentTask(taskId, updates)),
+  deleteAgentTask: (taskId) => ok(agentTasks.deleteAgentTask(taskId)),
+  prepareAgentTask: async (taskId) => ok(await agentTasks.prepareAgentTask(taskId)),
+  collectAgentTaskEvidence: async (taskId) => ok(await agentTasks.collectAgentTaskEvidence(taskId)),
+  commitAgentTask: async (taskId, message) => ok(await agentTasks.commitAgentTask(taskId, message)),
+  discardAgentTaskChanges: async (taskId) => ok(await agentTasks.discardAgentTaskChanges(taskId)),
+  planAgentTaskQueue: () => ok(agentTasks.planAgentTaskQueue()),
+  exportAgentTaskAudit: (taskId, format) => ok(agentTasks.exportAgentTaskAudit(taskId, format)),
   getProviderPresets: () => ok({ presets: PROVIDER_PRESETS, apiFormats: API_FORMATS }),
   fetchModels: (opts = {}) => wrapped(() => {
     const preset = PROVIDER_PRESETS.find(p => p.id === opts.presetId || p.baseUrl === opts.baseUrl || p.name === opts.name);
@@ -270,7 +283,16 @@ const handlers = {
   stopRunner: (key) => ok(runner.stopByKey(key)),
   checkEnv: async () => {
     const result = await runner.checkClaude();
-    return { claudePath: result.claudePath, ccSwitchPath: "(integrated)", claudeVersion: result.version, ok: result.ok, error: result.error };
+    const setup = claudeSetup.detectClaude(result.claudePath);
+    return {
+      ...setup,
+      claudePath: result.claudePath || setup.claudePath,
+      claudeVersion: result.version || setup.version,
+      version: result.version || setup.version,
+      ccSwitchPath: "(integrated)",
+      ok: result.ok,
+      error: result.error,
+    };
   },
   checkClaude: async (preferred) => ok(await runner.checkClaude(preferred)),
   openCcSwitch: async () => {
@@ -280,6 +302,7 @@ const handlers = {
   },
   readText: (path) => {
     if (!path || !existsSync(path)) return { ok: false };
+    assertRealInsidePath(homedir(), path, "readText path");
     return ok(safeReadTextFile(path));
   },
   detectClaude: (path) => ok(claudeSetup.detectClaude(path)),
@@ -323,6 +346,7 @@ const handlers = {
   listPlugins: async () => ok((await import("./db.js")).listPlugins()),
   importPluginFolder: async (sourcePath) => {
     if (!sourcePath || !existsSync(sourcePath) || !statSync(sourcePath).isDirectory()) return fail("Please choose a plugin folder");
+    assertNotSymlink(sourcePath, "Plugin source");
     const manifest = readPluginManifest(sourcePath);
     if (!manifest) return fail("Plugin manifest not found");
     const targetRoot = PLUGIN_ROOT;
@@ -331,7 +355,7 @@ const handlers = {
     assertInsidePath(targetRoot, target, "Plugin install target");
     if (sourcePath.toLowerCase() === target.toLowerCase()) return ok({ path: target, manifest, alreadyInstalled: true });
     mkdirSync(targetRoot, { recursive: true });
-    cpSync(sourcePath, target, { recursive: true, force: true });
+    cpSync(sourcePath, target, { recursive: true, force: true, dereference: false });
     return ok({ path: target, manifest, pluginId });
   },
   installPluginByName: async (pluginName) => {
@@ -350,6 +374,7 @@ const handlers = {
   deletePlugin: (pluginPath) => {
     if (!pluginPath || !existsSync(pluginPath)) return fail("Plugin path does not exist");
     const safePath = assertInsidePath(PLUGIN_ROOT, pluginPath, "Plugin path");
+    assertNotSymlink(safePath, "Plugin path");
     rmSync(safePath, { recursive: true, force: true });
     return { ok: true };
   },
@@ -359,9 +384,11 @@ const handlers = {
   diagnosticReport: async (payload) => ok(await (await import("./db.js")).getDiagnosticReport(payload)),
 };
 
+const ALLOWED_METHODS = new Set(Object.keys(handlers));
+
 async function call(method, args = []) {
+  if (!ALLOWED_METHODS.has(method)) return fail(`Unknown backend method: ${method}`);
   const handler = handlers[method];
-  if (!handler) return fail(`Unknown backend method: ${method}`);
   try {
     return await handler(...args);
   } catch (e) {

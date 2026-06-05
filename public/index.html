@@ -7,7 +7,8 @@
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
-    <div class="toast-box" id="toastBox"></div>
+    <a href="#main" class="skip-link">跳转到主要内容</a>
+    <div class="toast-box" id="toastBox" role="alert" aria-live="polite"></div>
 
     <!-- Claude Setup Banner -->
     <div class="version-banner is-hidden" id="setupBanner">
@@ -27,41 +28,41 @@
     </div>
 
     <!-- Top Bar -->
-    <header class="topbar">
-      <button class="topbar-btn" id="sidebarToggle" type="button" title="侧边栏">
+    <header class="topbar" role="banner">
+      <button class="topbar-btn" id="sidebarToggle" type="button" title="侧边栏" data-tip="切换侧边栏" aria-label="切换侧边栏">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M6 2v12" stroke="currentColor" stroke-width="1.5"/></svg>
       </button>
-      <button class="topbar-btn" id="contextToggle" type="button" title="折叠右侧栏">
+      <button class="topbar-btn" id="contextToggle" type="button" title="折叠右侧栏" data-tip="切换右侧面板" aria-label="切换右侧面板">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M10 2v12" stroke="currentColor" stroke-width="1.5"/></svg>
       </button>
-      <button class="topbar-brand" id="brandMenuBtn" type="button" title="菜单">
+      <button class="topbar-brand" id="brandMenuBtn" type="button" title="菜单" data-tip="菜单" aria-haspopup="true" aria-expanded="false">
         <svg class="logo-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
-          <defs><linearGradient id="logoGrad" x1="2" y1="2" x2="18" y2="18"><stop stop-color="#4582ff"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></defs>
-          <circle cx="10" cy="10" r="9" stroke="url(#logoGrad)" stroke-width="1.6"/>
-          <path d="M12.5 7c-1-1-2.5-1.5-4-1.5C5.5 5.5 3.5 7.5 3.5 10s2 4.5 5 4.5c1.5 0 3-.5 4-1.5" stroke="url(#logoGrad)" stroke-width="1.6" stroke-linecap="round"/>
+          <rect x="2.5" y="3" width="15" height="14" rx="3.2" stroke="currentColor" stroke-width="1.45"/>
+          <path d="M6.4 8.2 4.8 10l1.6 1.8M13.6 8.2l1.6 1.8-1.6 1.8M11.2 6.8 8.8 13.2" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <span class="logo-text">Claude Code Studio</span>
         <svg class="brand-chevron" width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
-      <div class="float-dropdown" id="brandDropdown" style="min-width:160px;">
-        <button class="model-option" data-tab="providers" type="button">Provider 管理</button>
-        <button class="model-option" data-tab="teams" type="button">Teams 工作流</button>
-        <button class="model-option" data-tab="identities" type="button">身份与协作</button>
-        <button class="model-option" data-tab="skills" type="button">Skills 管理</button>
-        <button class="model-option" data-tab="mcp" type="button">MCP 服务</button>
-        <button class="model-option" data-tab="plugins" type="button">插件</button>
+      <div class="float-dropdown" id="brandDropdown" style="min-width:160px;" role="menu" aria-label="主菜单">
+        <button class="model-option" data-tab="providers" type="button" role="menuitem">Provider 管理</button>
+        <button class="model-option" data-tab="teams" type="button" role="menuitem">Teams 工作流</button>
+        <button class="model-option" data-tab="tasks" type="button" role="menuitem">Agent Tasks</button>
+        <button class="model-option" data-tab="identities" type="button" role="menuitem">身份与协作</button>
+        <button class="model-option" data-tab="skills" type="button" role="menuitem">Skills 管理</button>
+        <button class="model-option" data-tab="mcp" type="button" role="menuitem">MCP 服务</button>
+        <button class="model-option" data-tab="plugins" type="button" role="menuitem">插件</button>
         <div style="height:1px;background:var(--td-border-level-2-color);margin:3px 6px;"></div>
-        <button class="model-option" data-tab="usage" type="button">用量统计</button>
-        <button class="model-option" data-tab="diagnostics" type="button">诊断</button>
-        <button class="model-option" data-tab="general" type="button">通用设置</button>
-        <button class="model-option" id="helpBtn" type="button">使用帮助</button>
+        <button class="model-option" data-tab="usage" type="button" role="menuitem">用量统计</button>
+        <button class="model-option" data-tab="diagnostics" type="button" role="menuitem">诊断</button>
+        <button class="model-option" data-tab="general" type="button" role="menuitem">通用设置</button>
+        <button class="model-option" id="helpBtn" type="button" role="menuitem">使用帮助</button>
       </div>
       <div class="topbar-actions">
-        <button class="topbar-act" id="newChatBtn" type="button" title="新对话">
+        <button class="topbar-act" id="newChatBtn" type="button" title="新对话" data-tip="新对话 (Ctrl+N)" aria-label="新建对话">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="2.5" width="11" height="9" rx="2.5" stroke="currentColor" stroke-width="1.3"/><path d="M6 10l-2 3h8l-2-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 4.5v3M6.5 6h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
           <span>新对话</span>
         </button>
-        <button class="topbar-act" id="searchBtn" type="button" title="搜索">
+        <button class="topbar-act" id="searchBtn" type="button" title="搜索" data-tip="搜索 (Ctrl+/)" aria-label="搜索">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.3"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
           <span>搜索</span>
         </button>
@@ -89,7 +90,7 @@
 
     <div class="shell">
       <!-- Sidebar -->
-      <aside class="sidebar" id="sidebar">
+      <aside class="sidebar" id="sidebar" role="navigation" aria-label="项目和对话导航">
         <div class="sidebar-head">
           <span class="sidebar-title">项目</span>
           <div style="display:flex;gap:2px;">
@@ -105,6 +106,11 @@
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           </button>
         </div>
+        <div class="conv-filter-bar" id="convFilterBar">
+          <button class="conv-filter-btn is-active" data-filter="all" type="button">全部</button>
+          <button class="conv-filter-btn" data-filter="pinned" type="button">已固定</button>
+          <button class="conv-filter-btn" data-filter="recent" type="button">今天</button>
+        </div>
         <div class="conv-list" id="convList" style="flex:1;"></div>
         <div class="sidebar-foot">
           <div class="foot-info" id="providerInfo">未连接</div>
@@ -113,8 +119,8 @@
       </aside>
 
       <!-- Main Chat -->
-      <main class="main">
-        <div class="transcript" id="transcript"></div>
+      <main class="main" id="main" role="main">
+        <div class="transcript" id="transcript" role="log" aria-live="polite" aria-label="对话内容"></div>
 
         <form class="composer-wrap" id="composer">
           <div class="plan-bar is-hidden" id="planBar">
@@ -125,7 +131,7 @@
           </div>
           <div class="composer">
             <div class="composer-top">
-              <textarea id="promptInput" rows="1" placeholder="输入任务..."></textarea>
+              <textarea id="promptInput" rows="1" placeholder="输入任务... (/ 触发快捷指令)" aria-label="输入任务"></textarea>
               <div class="attachment-tray" id="attachmentTray"></div>
             </div>
             <div class="composer-foot">
@@ -171,7 +177,7 @@
                   <span id="modelLabel">未设置</span>
                   <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </button>
-                <button class="run-stop-btn is-send" id="runStopBtn" type="submit" title="发送">
+                <button class="run-stop-btn is-send" id="runStopBtn" type="submit" title="发送" aria-label="发送消息">
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2v12M3 7l5-5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </button>
               </div>
@@ -233,7 +239,7 @@
       </button>
     </div>
 
-    <div class="search-panel" id="searchPanel">
+    <div class="search-panel" id="searchPanel" role="search" aria-label="全局搜索">
       <div class="search-head">
         <input id="globalSearchInput" type="search" placeholder="搜索项目、对话、消息、插件、记忆关键词">
         <button class="topbar-btn" id="searchCloseBtn" type="button" title="关闭">
@@ -243,17 +249,26 @@
       <div class="search-results" id="searchResults"></div>
     </div>
 
+    <!-- Command Palette -->
+    <div class="cmd-palette-overlay" id="cmdPaletteOverlay">
+      <div class="cmd-palette">
+        <input class="cmd-palette-input" id="cmdPaletteInput" type="text" placeholder="输入命令或搜索..." aria-label="命令面板">
+        <div class="cmd-palette-results" id="cmdPaletteResults" role="listbox"></div>
+      </div>
+    </div>
+
     <!-- Settings Page -->
-    <div class="settings-page" id="settingsPage">
+    <div class="settings-page" id="settingsPage" role="dialog" aria-modal="true" aria-label="设置">
       <div class="settings-head">
         <button class="settings-back" id="settingsBack" type="button">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <span class="settings-title" id="settingsTitle">设置</span>
       </div>
-      <div class="settings-tabs" id="settingsTabs">
+      <div class="settings-tabs" id="settingsTabs" role="tablist">
         <button class="stab is-active" data-tab="providers" type="button">Provider</button>
         <button class="stab" data-tab="teams" type="button">Teams</button>
+        <button class="stab" data-tab="tasks" type="button">Tasks</button>
         <button class="stab" data-tab="identities" type="button">身份</button>
         <button class="stab" data-tab="skills" type="button">Skills</button>
         <button class="stab" data-tab="mcp" type="button">MCP</button>
@@ -281,7 +296,7 @@
     </div>
 
     <!-- Modal -->
-    <div class="modal-overlay" id="modalOverlay">
+    <div class="modal-overlay" id="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <div class="modal-box" id="modalBox">
         <div class="modal-title" id="modalTitle"></div>
         <div class="modal-fields" id="modalFields"></div>
@@ -293,7 +308,7 @@
     </div>
 
     <!-- Context Menu -->
-    <div class="float-dropdown" id="ctxMenu" style="min-width:120px;"></div>
+    <div class="float-dropdown" id="ctxMenu" style="min-width:120px;" role="menu" aria-label="上下文菜单"></div>
 
     <!-- First-run wizard / Help -->
     <div class="wizard-overlay" id="wizardOverlay">
@@ -320,7 +335,7 @@
     </div>
 
     <!-- Confirm -->
-    <div class="modal-overlay" id="confirmOverlay">
+    <div class="modal-overlay" id="confirmOverlay" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle">
       <div class="modal-box">
         <div class="modal-title" id="confirmTitle"></div>
         <div class="modal-msg" id="confirmMsg"></div>
@@ -332,7 +347,7 @@
     </div>
 
     <!-- Ask User (auto mode permission) -->
-    <div class="modal-overlay" id="askOverlay">
+    <div class="modal-overlay" id="askOverlay" role="dialog" aria-modal="true" aria-labelledby="askTitle">
       <div class="modal-box">
         <div class="modal-title" id="askTitle">需要确认</div>
         <div class="ask-questions" id="askQuestions"></div>

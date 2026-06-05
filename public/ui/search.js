@@ -51,11 +51,34 @@ export function collectSearchResults(term) {
       results.push({ type: "身份", title: identity.name, sub: identity.description || "", action: () => deps.switchIdentity?.(identity.id) });
     }
   }
+  for (const team of data.teams || []) {
+    const memberText = (team.members || []).map(member => `${member.name} ${member.role} ${member.rules}`).join(" ");
+    const workflowText = (team.workflow || []).map(step => `${step.name} ${step.instruction} ${step.decisionInstruction}`).join(" ");
+    if (searchable(`${team.name} ${team.description} ${team.rules} ${memberText} ${workflowText}`).includes(q)) {
+      results.push({
+        type: "Team",
+        title: team.name,
+        sub: `${team.members?.length || 0} 身份 · ${team.workflow?.length || 0} 节点`,
+        action: () => { state.selectedTeamId = team.id; save(); deps.openTeamsBuilder?.(); },
+      });
+    }
+  }
+  for (const task of data.agentTasks || []) {
+    if (searchable(`${task.title} ${task.prompt} ${task.cwd} ${task.branch} ${task.worktreePath}`).includes(q)) {
+      results.push({
+        type: "Agent Task",
+        title: task.title,
+        sub: `${task.status || "draft"} · ${task.branch || task.cwd || ""}`,
+        action: () => deps.openSettings?.("tasks"),
+      });
+    }
+  }
   return results.slice(0, 40);
 }
 
 export function renderSearchResults(term) {
   const body = $("#searchResults");
+  if (!body) return;
   const results = collectSearchResults(term);
   state.searchTerm = term;
   save();

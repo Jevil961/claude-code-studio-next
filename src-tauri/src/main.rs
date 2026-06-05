@@ -5,7 +5,7 @@ use std::{
     collections::HashMap,
     env,
     io::{BufRead, BufReader, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Child, ChildStdin, Command, Stdio},
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -16,7 +16,9 @@ use std::{
 };
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
-use tauri::{Emitter, Manager};
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::{sync::oneshot, time::{timeout, Duration}};
 
 struct BackendState {
@@ -94,6 +96,16 @@ fn node_binary(app: &tauri::AppHandle, root: &PathBuf) -> String {
     }
     for candidate in candidates {
         if candidate.exists() {
+            #[cfg(unix)]
+            {
+                if let Ok(metadata) = std::fs::metadata(&candidate) {
+                    let mut permissions = metadata.permissions();
+                    if permissions.mode() & 0o111 == 0 {
+                        permissions.set_mode(0o755);
+                        let _ = std::fs::set_permissions(&candidate, permissions);
+                    }
+                }
+            }
             return candidate.to_string_lossy().to_string();
         }
     }
@@ -322,6 +334,34 @@ fn close_window(window: tauri::Window) -> Value {
     }
 }
 
+#[tauri::command]
+fn open_workspace_window(app: tauri::AppHandle, value: String) -> Value {
+    let label = format!("workspace-{}", chrono_like_millis());
+    let title = if value.trim().is_empty() {
+        "Claude Code Studio Next".to_string()
+    } else {
+        format!("Claude Code Studio Next · {}", value.trim())
+    };
+    match WebviewWindowBuilder::new(&app, label, WebviewUrl::App("index.html".into()))
+        .title(title)
+        .inner_size(1360.0, 860.0)
+        .min_inner_size(980.0, 620.0)
+        .decorations(false)
+        .background_color(tauri::window::Color(13, 15, 20, 255))
+        .build()
+    {
+        Ok(_) => json!({ "ok": true }),
+        Err(err) => json!({ "ok": false, "error": err.to_string() }),
+    }
+}
+
+fn chrono_like_millis() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -345,6 +385,7 @@ pub fn run() {
             minimize_window,
             toggle_maximize_window,
             close_window,
+            open_workspace_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

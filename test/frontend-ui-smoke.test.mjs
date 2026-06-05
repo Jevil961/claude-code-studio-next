@@ -111,6 +111,7 @@ function installFakeBridge() {
         mcp: [],
         identities: [],
         teams: [],
+        agentTasks: [],
         projects: [],
         plugins: [],
         automations: [],
@@ -121,6 +122,7 @@ function installFakeBridge() {
     detectClaude: async () => ({ ok: true, data: { installed: true } }),
     listSkillCategories: async () => ({ ok: true, data: { skills: [], categoryInfo: {} } }),
     listTeams: async () => ({ ok: true, data: [] }),
+    listAgentTasks: async () => ({ ok: true, data: [] }),
     listMcp: async () => ({ ok: true, data: [] }),
     listPlugins: async () => ({ ok: true, data: [] }),
     listRunners: async () => ({ ok: true, data: [] }),
@@ -316,6 +318,53 @@ test("first-run wizard and help entry are wired into the shell", () => {
   assert.match(onboarding, /shouldShowFirstRun/);
 });
 
+test("desktop shell uses a roomy default window and neutral code logo", () => {
+  const html = fs.readFileSync("public/index.html", "utf8");
+  const styles = fs.readFileSync("public/styles.css", "utf8");
+  const tauri = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));
+  const win = tauri.app.windows[0];
+
+  assert.equal(win.width, 1360);
+  assert.equal(win.height, 860);
+  assert.equal(win.minWidth, 980);
+  assert.equal(win.minHeight, 620);
+  assert.match(html, /class="logo-icon"/);
+  assert.match(html, /M6\.4 8\.2 4\.8 10l1\.6 1\.8/);
+  assert.doesNotMatch(html, /id="logoGrad"/);
+  assert.doesNotMatch(html, /circle cx="10" cy="10"/);
+  assert.match(styles, /\.logo-icon[\s\S]*color: var\(--td-brand-color\)/);
+  assert.doesNotMatch(styles, /letter-spacing: -0\.2px/);
+});
+
+test("installed app detection separates bundled Node from system npm and searches common CLI paths", () => {
+  const runner = fs.readFileSync("src/runner/ClaudeRunner.js", "utf8");
+  const setup = fs.readFileSync("src/claude-setup.js", "utf8");
+  const setupUi = fs.readFileSync("public/ui/setup.js", "utf8");
+  const diagnostics = fs.readFileSync("public/ui/settings/diagnostics.js", "utf8");
+  const general = fs.readFileSync("public/ui/settings/general.js", "utf8");
+  const main = fs.readFileSync("src-tauri/src/main.rs", "utf8");
+
+  assert.match(runner, /\/opt\/homebrew\/bin/);
+  assert.match(runner, /\.npm-global/);
+  assert.match(runner, /\.nvm/);
+  assert.match(runner, /\.asdf/);
+  assert.match(runner, /\.volta/);
+  assert.match(runner, /env: toolEnv\(\)/);
+  assert.match(setup, /hasRuntimeNode/);
+  assert.match(setup, /hasSystemNode/);
+  assert.match(setup, /npmPath/);
+  assert.match(setupUi, /需要系统 Node\.js\/npm/);
+  assert.match(setupUi, /打开 Node\.js 下载/);
+  assert.match(setupUi, /手动设置路径/);
+  assert.match(setupUi, /handleManualClaudePath/);
+  assert.match(setupUi, /chooseFile/);
+  assert.match(general, /选择 Claude 文件/);
+  assert.match(diagnostics, /系统 Node/);
+  assert.match(diagnostics, /内置 Node/);
+  assert.match(main, /PermissionsExt/);
+  assert.match(main, /set_mode\(0o755\)/);
+});
+
 test("core empty states include actionable guidance", () => {
   const messages = fs.readFileSync("public/ui/messages.js", "utf8");
   const projectNav = fs.readFileSync("public/ui/project-nav.js", "utf8");
@@ -351,7 +400,81 @@ test("teams runtime does not propagate plan permission mode into handoff runs", 
   assert.doesNotMatch(source, /\{ value: "plan", label: "Plan" \}/);
 });
 
-test("tauri bridge exposes teams workflow methods", () => {
+test("agent task center includes a dedicated diff review overlay", () => {
+  const source = fs.readFileSync("public/ui/settings/tasks.js", "utf8");
+  const styles = fs.readFileSync("public/styles.css", "utf8");
+
+  assert.match(source, /function ensureDiffReviewOverlay/);
+  assert.match(source, /taskDiffReviewOverlay/);
+  assert.match(source, /审查 Diff/);
+  assert.match(source, /copyCurrentDiffBtn/);
+  assert.match(styles, /\.task-review-overlay/);
+  assert.match(styles, /\.diff-line-add/);
+  assert.match(styles, /\.diff-line-del/);
+});
+
+test("session replay, official plugin install shortcut, and security center are wired", () => {
+  const messages = fs.readFileSync("public/ui/messages.js", "utf8");
+  const chat = fs.readFileSync("public/ui/chat-engine.js", "utf8");
+  const slash = fs.readFileSync("public/ui/slash-commands.js", "utf8");
+  const palette = fs.readFileSync("public/ui/command-palette.js", "utf8");
+  const diagnostics = fs.readFileSync("public/ui/settings/diagnostics.js", "utf8");
+  const styles = fs.readFileSync("public/styles.css", "utf8");
+
+  assert.match(messages, /function ensureReplayOverlay/);
+  assert.match(messages, /replaySearchInput/);
+  assert.match(messages, /replayFilter/);
+  assert.match(messages, /copyReplayAuditBtn/);
+  assert.match(messages, /msg-recovery-actions/);
+  assert.match(messages, /startReplayRun/);
+  assert.match(messages, /recordReplayEvent/);
+  assert.match(messages, /finishReplayRun/);
+  assert.match(chat, /installPluginByName/);
+  assert.match(chat, /\/plugin/);
+  assert.match(chat, /openWorkspaceWindow/);
+  assert.match(slash, /\/replay/);
+  assert.match(slash, /\/security/);
+  assert.match(slash, /\/window/);
+  assert.match(palette, /打开会话回放/);
+  assert.match(palette, /打开新的本地工作区窗口/);
+  assert.match(diagnostics, /权限与沙箱安全中心/);
+  assert.match(diagnostics, /securityFindings/);
+  assert.match(styles, /\.replay-overlay/);
+  assert.match(styles, /\.replay-tools/);
+  assert.match(styles, /\.msg-recovery-actions/);
+  assert.match(styles, /\.security-center/);
+});
+
+test("agent task center supports batch diff review", () => {
+  const source = fs.readFileSync("public/ui/settings/tasks.js", "utf8");
+  const backend = fs.readFileSync("src/agent-tasks.js", "utf8");
+  const styles = fs.readFileSync("public/styles.css", "utf8");
+
+  assert.match(source, /function showBatchReview/);
+  assert.match(source, /combinedReviewTask/);
+  assert.match(source, /batchReviewBtn/);
+  assert.match(source, /可审查/);
+  assert.match(source, /function reviewTask/);
+  assert.match(source, /reviewStatusLabel/);
+  assert.match(source, /通过审查/);
+  assert.match(backend, /reviewStatus/);
+  assert.match(backend, /reviewNotes/);
+  assert.match(backend, /reviewedAt/);
+  assert.match(styles, /\.task-review-state/);
+});
+
+test("runner settings expose health and runtime metadata", () => {
+  const source = fs.readFileSync("public/ui/settings/runners.js", "utf8");
+  const styles = fs.readFileSync("public/styles.css", "utf8");
+
+  assert.match(source, /function runnerHealth/);
+  assert.match(source, /runner-health-strip/);
+  assert.match(source, /runner-meta/);
+  assert.match(styles, /\.runner-card/);
+  assert.match(styles, /\.runner-health-strip/);
+});
+
+test("tauri bridge exposes teams workflow and agent task methods", () => {
   const source = fs.readFileSync("public/tauri-bridge.js", "utf8");
   const calls = [];
   const window = {
@@ -362,6 +485,7 @@ test("tauri bridge exposes teams workflow methods", () => {
   };
 
   vm.runInNewContext(source, { window, Promise });
+  assert.equal(typeof window.agentBridge.openWorkspaceWindow, "function");
 
   for (const method of [
     "listTeams",
@@ -376,6 +500,17 @@ test("tauri bridge exposes teams workflow methods", () => {
     "deleteTeamStep",
     "updateTeamWorkflow",
     "composeTeamStepPrompt",
+    "listAgentTasks",
+    "createAgentTask",
+    "createAgentTaskBatch",
+    "updateAgentTask",
+    "deleteAgentTask",
+    "prepareAgentTask",
+    "collectAgentTaskEvidence",
+    "commitAgentTask",
+    "discardAgentTaskChanges",
+    "planAgentTaskQueue",
+    "exportAgentTaskAudit",
   ]) {
     assert.equal(typeof window.agentBridge[method], "function", method);
   }

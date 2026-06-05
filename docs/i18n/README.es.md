@@ -28,7 +28,7 @@ El proyecto apunta a Windows, macOS y Linux. La compilación local validada es W
 
 Los usuarios deben descargar los paquetes desde GitHub Releases. En Windows se puede usar el instalador o el zip portable. En macOS se usa el DMG. En Linux se puede usar AppImage o paquete Debian cuando esté disponible.
 
-Node.js 18 o superior debe estar disponible en `PATH`. Claude Code debe estar instalado; si falta, la aplicación mostrará una guía de configuración.
+Los paquetes incluyen el runtime del backend de escritorio. Claude Code debe estar instalado; si falta, la aplicación mostrará una guía de configuración. Node.js/npm del sistema aún puede ayudar con actualizaciones npm de Claude Code.
 
 ## Desarrollo
 
@@ -51,4 +51,4 @@ Los binarios generados no deben subirse al repositorio Git. Deben publicarse en 
 
 ## Estado Actual
 
-La versión `0.1.0` está lista para publicarse en GitHub. Node.js sigue siendo un requisito de ejecución documentado. La firma de código y las actualizaciones automáticas todavía no están habilitadas.
+La versión `1.0.0` está lista para publicarse en GitHub. Los paquetes incluyen el runtime del backend. La firma de código y las actualizaciones automáticas todavía no están habilitadas.

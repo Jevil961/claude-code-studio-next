@@ -18,14 +18,68 @@ export function hlMatch(v, term) {
   return escapeHtml(v).replace(new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"), "<mark>$1</mark>");
 }
 
-export function toast(msg, type = "info") {
+const MAX_TOASTS = 5;
+const activeToasts = new Map(); // message -> { el, count }
+
+export function toast(msg, type = "info", retryFn) {
   const box = document.querySelector("#toastBox");
   if (!box) return;
+
+  // Dedup: if same message exists, update count
+  if (activeToasts.has(msg)) {
+    const existing = activeToasts.get(msg);
+    existing.count++;
+    const countEl = existing.el.querySelector('.toast-count');
+    if (countEl) countEl.textContent = `×${existing.count}`;
+    // Reset dismiss timer
+    clearTimeout(existing.timer);
+    existing.timer = setTimeout(() => removeToast(msg), 3000);
+    return;
+  }
+
+  // Enforce max toasts
+  while (activeToasts.size >= MAX_TOASTS) {
+    const oldest = activeToasts.keys().next().value;
+    removeToast(oldest);
+  }
+
   const t = document.createElement("div");
   t.className = `toast ${type === "error" ? "err" : type === "success" ? "ok" : ""}`;
-  t.textContent = msg;
+  t.setAttribute('role', 'alert');
+
+  const textSpan = document.createElement('span');
+  textSpan.textContent = msg;
+  t.append(textSpan);
+
+  const countSpan = document.createElement('span');
+  countSpan.className = 'toast-count';
+  countSpan.style.cssText = 'margin-left:4px;font-size:11px;opacity:0.7;';
+  t.append(countSpan);
+
+  if (retryFn && (type === 'error' || type === 'info')) {
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'toast-retry';
+    retryBtn.textContent = '重试';
+    retryBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeToast(msg);
+      retryFn();
+    });
+    t.append(retryBtn);
+  }
+
   box.append(t);
-  setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 200); }, 3000);
+
+  const timer = setTimeout(() => removeToast(msg), 3000);
+  activeToasts.set(msg, { el: t, count: 1, timer });
+}
+
+function removeToast(msg) {
+  const entry = activeToasts.get(msg);
+  if (!entry) return;
+  clearTimeout(entry.timer);
+  entry.el.classList.add("out");
+  setTimeout(() => { entry.el.remove(); activeToasts.delete(msg); }, 200);
 }
 
 export function closeAllDropdowns() {

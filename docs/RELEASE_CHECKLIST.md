@@ -11,7 +11,7 @@
 - [ ] Opening the exe does not show a cmd window.
 - [ ] Opening the installed app works when system `node.exe` is not in `PATH`.
 - [ ] Closing the app removes the backend `node.exe`.
-- [ ] Node.js 18+ is installed and visible in Diagnostics.
+- [ ] Packaged backend runtime is bundled and Diagnostics can still detect system Node.js when present.
 - [ ] Claude Code detection succeeds or the install guidance is shown.
 - [ ] README points to Tauri scripts only.
 - [ ] GitHub Actions `ci.yml` passes on Windows, macOS, and Linux.
@@ -46,7 +46,7 @@
 
 ## Known Release Decisions
 
-- Node.js is a documented prerequisite for this release.
+- Packaged builds include the backend runtime; system Node.js/npm remains documented for Claude Code installation and update workflows.
 - Code signing is not enabled yet.
 - Auto-update is not enabled yet.
 - Release binaries are uploaded to GitHub Releases, not committed to Git.

@@ -19,7 +19,9 @@ export function closeAllDropdowns() {
 export function showAddMenu() {
   clearTimeout(addMenuTimer);
   const addMenu = $("#addMenu");
-  const rect = $("#addBtn").getBoundingClientRect();
+  const addBtn = $("#addBtn");
+  if (!addMenu || !addBtn) return;
+  const rect = addBtn.getBoundingClientRect();
   addMenu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 476))}px`;
   addMenu.style.bottom = `${window.innerHeight - rect.top + 8}px`;
   addMenu.style.display = "block";
@@ -29,6 +31,7 @@ export function showAddMenu() {
 export function hideAddMenu(delay = 300) {
   clearTimeout(addMenuTimer);
   const addMenu = $("#addMenu");
+  if (!addMenu) return;
   addMenuTimer = setTimeout(() => {
     addMenu.style.display = "none";
   }, delay);
@@ -37,6 +40,7 @@ export function hideAddMenu(delay = 300) {
 export function setActiveAddCategory(item) {
   if (!item) return;
   const addMenu = $("#addMenu");
+  if (!addMenu) return;
   addMenu.querySelectorAll(".add-menu-item[data-sub]").forEach(node => node.classList.toggle("is-open", node === item));
 }
 
@@ -53,6 +57,7 @@ export function populateIdentitiesSubmenu() {
     const btn = document.createElement("button");
     btn.className = `add-sub-item${id.active ? " is-active" : ""}`;
     btn.type = "button";
+    btn.setAttribute('role', 'menuitem');
     btn.textContent = `${id.icon || "ID"} ${id.name}`;
     btn.addEventListener("click", async () => { await deps.switchIdentity?.(id.id); addMenu.style.display = "none"; });
     sub.append(btn);
@@ -61,6 +66,7 @@ export function populateIdentitiesSubmenu() {
 
 export function populateModelDropdown() {
   const body = $("#modelDropdownBody");
+  if (!body) return;
   body.innerHTML = "";
   const current = curProvider();
   if (!current) {
@@ -74,6 +80,7 @@ export function populateModelDropdown() {
     const opt = document.createElement("button");
     opt.className = `model-option${p.id === current.id ? " is-active" : ""}`;
     opt.type = "button";
+    opt.setAttribute('role', 'menuitem');
     opt.textContent = `${p.name || "Provider"} · ${p.model || "未设置"}`;
     opt.addEventListener("click", async () => {
       closeAllDropdowns();
@@ -118,14 +125,34 @@ export function initDropdowns() {
     }
     if (!e.target.closest("#searchPanel") && !e.target.closest("#searchBtn")) deps.closeSearchPanel?.();
   });
-  document.addEventListener("keydown", e => { if (e.key === "Escape") closeAllDropdowns(); });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") { closeAllDropdowns(); return; }
+    // Keyboard navigation in open dropdowns
+    const openDd = document.querySelector('.float-dropdown.is-open');
+    if (!openDd) return;
+    const items = [...openDd.querySelectorAll('[role="menuitem"], .model-option, .perm-option, .add-sub-item')].filter(el => el.offsetParent !== null);
+    if (!items.length) return;
+    const curIdx = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = curIdx < items.length - 1 ? curIdx + 1 : 0;
+      items[next].focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prev = curIdx > 0 ? curIdx - 1 : items.length - 1;
+      items[prev].focus();
+    } else if (e.key === 'Enter' && curIdx >= 0) {
+      e.preventDefault();
+      items[curIdx].click();
+    }
+  });
 
   // Add button
   const addMenuWrap = $(".add-menu-wrap");
   const addMenu = $("#addMenu");
-  $("#addBtn").addEventListener("click", (e) => {
+  $("#addBtn")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (addMenu.style.display === "block") {
+    if (addMenu?.style.display === "block") {
       addMenu.style.display = "none";
     } else {
       showAddMenu();
@@ -133,13 +160,13 @@ export function initDropdowns() {
   });
 
   // Mouse enter/leave for add menu
-  addMenuWrap.addEventListener("mouseenter", showAddMenu);
-  addMenuWrap.addEventListener("mouseleave", () => hideAddMenu(300));
-  addMenu.addEventListener("mouseenter", () => clearTimeout(addMenuTimer));
-  addMenu.addEventListener("mouseleave", () => hideAddMenu(200));
+  addMenuWrap?.addEventListener("mouseenter", showAddMenu);
+  addMenuWrap?.addEventListener("mouseleave", () => hideAddMenu(300));
+  addMenu?.addEventListener("mouseenter", () => clearTimeout(addMenuTimer));
+  addMenu?.addEventListener("mouseleave", () => hideAddMenu(200));
 
   // Submenu activation
-  addMenu.querySelectorAll(".add-menu-item[data-sub]").forEach(item => {
+  addMenu?.querySelectorAll(".add-menu-item[data-sub]").forEach(item => {
     item.addEventListener("mouseenter", () => setActiveAddCategory(item));
     item.addEventListener("click", e => {
       if (e.target.closest(".add-sub-item")) return;
@@ -178,9 +205,10 @@ export function initDropdowns() {
   });
 
   // Permission dropdown
-  $("#permBtn").addEventListener("click", e => {
+  $("#permBtn")?.addEventListener("click", e => {
     e.stopPropagation();
     const dd = $("#permDropdown");
+    if (!dd) return;
     if (dd.classList.contains("is-open")) { dd.classList.remove("is-open"); return; }
     closeAllDropdowns();
     dd.querySelectorAll(".perm-option").forEach(opt => {
@@ -192,7 +220,7 @@ export function initDropdowns() {
     dd.style.bottom = (window.innerHeight - rect.top + 6) + "px";
     dd.classList.add("is-open");
   });
-  $("#permDropdown").querySelectorAll(".perm-option").forEach(opt => {
+  $("#permDropdown")?.querySelectorAll(".perm-option").forEach(opt => {
     opt.addEventListener("click", () => {
       deps.setPerm?.(opt.dataset.mode);
       closeAllDropdowns();
@@ -200,9 +228,10 @@ export function initDropdowns() {
   });
 
   // Model selector
-  $("#modelBtn").addEventListener("click", e => {
+  $("#modelBtn")?.addEventListener("click", e => {
     e.stopPropagation();
     const dd = $("#modelDropdown");
+    if (!dd) return;
     if (dd.classList.contains("is-open")) { dd.classList.remove("is-open"); return; }
     closeAllDropdowns();
     populateModelDropdown();

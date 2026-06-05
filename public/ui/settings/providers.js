@@ -8,7 +8,7 @@ import { loadProviders } from "../data-loader.js";
 export function renderProvidersSettings({ settingsBody, renderSettingsTab, updateFooter, populateModelDropdown }) {
   const header = document.createElement("div");
   header.className = "scard";
-  header.innerHTML = `<div class="scard-head"><span class="scard-title">当前：${curProvider()?.name || "未设置"}</span><div class="scard-actions"><button class="st-btn t-btn--primary t-btn--sm" id="addProviderBtn">添加 Provider</button></div></div>`;
+  header.innerHTML = `<div class="scard-head"><span class="scard-title">当前：${escapeHtml(curProvider()?.name || "未设置")}</span><div class="scard-actions"><button class="st-btn t-btn--primary t-btn--sm" id="addProviderBtn">添加 Provider</button></div></div>`;
   settingsBody.append(header);
   header.querySelector("#addProviderBtn").addEventListener("click", () => createProviderDlg({ settingsBody, renderSettingsTab }));
 
@@ -55,9 +55,9 @@ async function createProviderDlg({ settingsBody, renderSettingsTab }) {
 
   const result = await showModal("添加 Provider", [
     { key: "preset", label: "预设平台", type: "select", options: [{ value: "", label: "-- 选择预设 --" }, ...presets.map(p => ({ value: p.id, label: `${p.icon || ""} ${p.name}` }))], value: "" },
-    { key: "name", label: "名称", value: "", placeholder: "Provider 名称" },
-    { key: "baseUrl", label: "Base URL", value: "", placeholder: "API 地址" },
-    { key: "authToken", label: "Auth Token", value: "", placeholder: "API Key", type: "password" },
+    { key: "name", label: "名称", value: "", placeholder: "Provider 名称", required: true },
+    { key: "baseUrl", label: "Base URL", value: "", placeholder: "API 地址", required: false, pattern: "^https?://.*", patternMessage: "URL 必须以 http:// 或 https:// 开头" },
+    { key: "authToken", label: "Auth Token", value: "", placeholder: "API Key", type: "password", required: true },
     { key: "apiFormat", label: "API 格式", type: "select", options: [{ value: "anthropic", label: "Anthropic 原生" }, { value: "openai", label: "OpenAI 兼容" }, { value: "gemini", label: "Google Gemini" }], value: "openai" },
     { key: "model", label: "默认模型", value: "", placeholder: "选择预设后自动填充，或手动输入" },
   ]);

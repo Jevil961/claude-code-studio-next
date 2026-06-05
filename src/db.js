@@ -178,14 +178,61 @@ function writeUsageCache(data) {
 
 export async function getDiagnostics(payload = {}) {
   const { findClaude, findClaudeSync } = await import("./runner/ClaudeRunner.js");
+  const setup = await import("./claude-setup.js").then(m => m.detectClaude(payload.claudePath || ""));
   const claudePath = payload.claudePath || findClaudeSync() || await findClaude();
   const ccSwitchDb = join(homedir(), ".cc-switch", "cc-switch.db");
+  const git = await getGitStatus(payload.cwd || process.cwd());
   return {
     platform: process.platform, cwd: payload.cwd || process.cwd(),
-    claudePath, claudeVersion: "", ccSwitchPath: "(integrated)", ccSwitchDb,
+    ...setup,
+    claudePath: claudePath || setup.claudePath,
+    claudeVersion: setup.version || "",
+    ccSwitchPath: "(integrated)", ccSwitchDb,
     ccSwitchDbExists: existsSync(ccSwitchDb), pythonPath: "(not needed)",
-    nodePath: process.execPath, nodeVersion: process.version, backendPid: process.pid,
-    runnerStrategy: payload.runnerStrategy || "", permissionMode: payload.permissionMode || "", ok: Boolean(claudePath),
+    nodePath: setup.nodePath || process.execPath,
+    nodeVersion: setup.nodeVersion || process.version,
+    backendNodePath: process.execPath,
+    backendNodeVersion: process.version,
+    backendPid: process.pid,
+    runnerStrategy: payload.runnerStrategy || "", permissionMode: payload.permissionMode || "", git, ok: Boolean(claudePath),
+  };
+}
+
+function execFileText(command, args = [], options = {}) {
+  return new Promise(resolve => {
+    execFile(command, args, { windowsHide: true, timeout: 5000, encoding: "utf8", ...options }, (err, stdout, stderr) => {
+      resolve({ ok: !err, stdout: String(stdout || ""), stderr: String(stderr || ""), error: err?.message || "" });
+    });
+  });
+}
+
+async function getGitStatus(cwd) {
+  const dir = String(cwd || "").trim();
+  if (!dir || !existsSync(dir)) return { ok: false, reason: "no-project" };
+  const root = await execFileText("git", ["rev-parse", "--show-toplevel"], { cwd: dir });
+  if (!root.ok) return { ok: false, reason: "not-git-repo" };
+  const branch = await execFileText("git", ["branch", "--show-current"], { cwd: dir });
+  const head = await execFileText("git", ["rev-parse", "--short", "HEAD"], { cwd: dir });
+  const status = await execFileText("git", ["status", "--porcelain"], { cwd: dir });
+  const rows = status.stdout.split(/\r?\n/).filter(Boolean);
+  const counts = { modified: 0, added: 0, deleted: 0, renamed: 0, untracked: 0, conflicted: 0 };
+  for (const row of rows) {
+    const code = row.slice(0, 2);
+    if (code.includes("U") || code === "AA" || code === "DD") counts.conflicted++;
+    else if (code.includes("?")) counts.untracked++;
+    else if (code.includes("R")) counts.renamed++;
+    else if (code.includes("D")) counts.deleted++;
+    else if (code.includes("A")) counts.added++;
+    else if (code.trim()) counts.modified++;
+  }
+  return {
+    ok: true,
+    root: root.stdout.trim(),
+    branch: branch.stdout.trim() || "detached",
+    head: head.stdout.trim(),
+    dirty: rows.length > 0,
+    changedFiles: rows.length,
+    counts,
   };
 }
 

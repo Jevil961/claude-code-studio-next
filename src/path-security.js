@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from "node:fs";
+import { lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { resolve, sep } from "node:path";
 
 export function isInsidePath(root, target) {
@@ -12,6 +12,19 @@ export function assertInsidePath(root, target, label = "path") {
     throw new Error(`${label} is outside the allowed directory`);
   }
   return resolve(target);
+}
+
+export function assertNotSymlink(path, label = "path") {
+  const st = lstatSync(path);
+  if (st.isSymbolicLink()) {
+    throw new Error(`${label} must not be a symlink`);
+  }
+  return path;
+}
+
+export function assertRealInsidePath(root, target, label = "path") {
+  const real = realpathSync(target);
+  return assertInsidePath(root, real, label);
 }
 
 export function validatePluginInstallName(value) {

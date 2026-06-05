@@ -1,35 +1,7 @@
 export const text = {
+  // Bridge/Runtime
   bridgeMissing: "Tauri 桥接未加载",
   bridgeTimeout: "读取超时",
-  searchPlaceholder: "搜索项目、对话、Provider、Skill",
-  newSession: "新会话",
-  continueSession: "继续上次会话",
-  seamless: "无缝模式",
-  strict: "严格模式",
-  localWorkbench: "本地 Claude Code 工作台",
-  readyToStart: "选择 Provider、项目和上下文后开始",
-  noProject: "未选择项目",
-  noProjects: "暂无项目，请先用 Claude Code 创建或选择工作目录",
-  noConversations: "选择项目后显示对话",
-  emptyTitle: "选择一个项目，然后继续对话",
-  emptyBody: "这里会展示 Claude Code 的运行过程、结果、用量和上下文。",
-  provider: "Provider",
-  fromCcSwitch: "来自 CCSWITCH",
-  currentProvider: "当前 Provider",
-  providerMissing: "未读取到 Provider",
-  waitingCcSwitch: "等待 CCSWITCH 数据",
-  modelMissing: "未设置模型",
-  noBaseUrl: "无 Base URL",
-  syncCurrentProvider: "同步当前 Provider",
-  refreshProvider: "刷新 Provider",
-  skills: "Skills",
-  syncState: "同步状态",
-  importSkill: "导入 Skill 文件夹",
-  syncSkills: "同步 Skills 到 Claude",
-  refreshSkills: "刷新 Skills",
-  plugins: "插件",
-  automations: "自动化",
-  usage: "用量",
   loading: "加载中...",
   envLoading: "后台加载项目、Provider、Skills、MCP 和用量",
   claudeReady: "Claude Code 已就绪",
@@ -39,15 +11,64 @@ export const text = {
   normal: "正常",
   failed: "失败",
   running: "Claude Code 正在运行",
+
+  // Runner status
   runnerDisconnected: "未连接",
   runnerStarting: "冷启动中",
   runnerReused: "复用已连接 runner",
   runnerBusy: "当前 runner 忙碌中",
   runnerStrict: "严格权限 runner",
   runnerSeamless: "无缝 runner",
-  chooseProjectFirst: "先选择项目或工作目录",
-  runFailed: "启动失败",
-  runDoneNoText: "Claude Code 运行结束，但没有返回文本。",
+
+  // UI labels
+  searchPlaceholder: "搜索项目、对话、消息、插件、身份",
+  newSession: "新会话",
+  continueSession: "继续上次会话",
+  seamless: "无缝模式",
+  strict: "严格模式",
+  localWorkbench: "本地 Claude Code 工作台",
+  readyToStart: "选择 Provider、项目和上下文后开始",
+  noProject: "未选择项目",
+  noProjects: "暂无项目，请先用 Claude Code 创建或选择工作目录",
+  noConversations: "选择项目后显示对话",
+  emptyTitle: "从一个项目任务开始",
+  emptyBody: "先选择左侧项目目录，再描述你希望 Claude Code 完成的工作。",
+
+  // Provider
+  provider: "Provider",
+  fromCcSwitch: "来自 CCSWITCH",
+  currentProvider: "当前 Provider",
+  providerMissing: "未读取到 Provider",
+  waitingCcSwitch: "等待 CCSWITCH 数据",
+  modelMissing: "未设置模型",
+  noBaseUrl: "无 Base URL",
+  syncCurrentProvider: "同步当前 Provider",
+  refreshProvider: "刷新 Provider",
+
+  // Skills
+  skills: "Skills",
+  syncState: "同步状态",
+  importSkill: "导入 Skill 文件夹",
+  syncSkills: "同步 Skills 到 Claude",
+  refreshSkills: "刷新 Skills",
+  plugins: "插件",
+  automations: "自动化",
+
+  // Usage/Export
+  usage: "用量",
+  exportDone: "对话已导出",
+  csvDone: "用量 CSV 已导出",
+  jsonlDone: "会话 JSONL 已导出",
+
+  // Session management
+  sessionLoaded: "已加载历史对话",
+  sessionReadFailed: "历史对话读取失败",
+  renamed: "已重命名",
+  pinned: "已置顶",
+  archived: "已归档",
+  deletedLocal: "已从本地列表隐藏",
+
+  // Actions
   copy: "复制",
   copied: "已复制",
   code: "代码",
@@ -55,19 +76,16 @@ export const text = {
   revisePlan: "修改计划",
   cancel: "取消",
   planReady: "计划已生成，选择下一步",
-  exportDone: "对话已导出",
-  csvDone: "用量 CSV 已导出",
-  jsonlDone: "会话 JSONL 已导出",
-  sessionLoaded: "已加载历史对话",
-  sessionReadFailed: "历史对话读取失败",
-  renamed: "已重命名",
-  pinned: "已置顶",
-  archived: "已归档",
-  deletedLocal: "已从本地列表隐藏",
-  priceSaved: "价格表已更新",
-  invalidJson: "JSON 配置无效",
+  chooseProjectFirst: "先选择项目或工作目录",
+  runFailed: "启动失败",
+  runDoneNoText: "Claude Code 运行结束，但没有返回文本。",
+
+  // MCP
   mcpAdded: "MCP 已添加",
   mcpImported: "MCP JSON 已导入并同步",
+  priceSaved: "价格表已更新",
+  invalidJson: "JSON 配置无效",
+
   // Identity
   identities: "身份管理",
   identityActive: "当前身份",
@@ -83,6 +101,7 @@ export const text = {
   identityRemoveSkill: "移除",
   identitySyncToClaude: "同步到 Claude",
   identitySynced: "身份 Skills 已同步",
+
   // Skill categories
   categoryAll: "全部",
   categoryCoding: "编程开发",
@@ -96,5 +115,68 @@ export const text = {
   categorySecurityMobile: "移动安全",
   categorySecurityMisc: "综合安全",
   categoryOther: "其他",
-  noIdentities: "暂无身份，点击 AI 生成或手动创建"
+  noIdentities: "暂无身份，点击 AI 生成或手动创建",
+
+  // Accessibility
+  skipToContent: "跳转到主要内容",
+  sidebarLabel: "项目和对话导航",
+  mainContent: "主要内容",
+  commandPalette: "命令面板",
+  searchLabel: "全局搜索",
+  menuLabel: "主菜单",
+  contextMenuLabel: "上下文菜单",
+  sendMessage: "发送消息",
+  stopRunning: "停止运行",
+  chatLog: "对话内容",
+
+  // Notifications
+  taskComplete: "任务已完成",
+  taskFailed: "任务失败",
+
+  // Common
+  confirm: "确定",
+  save: "保存",
+  edit: "编辑",
+  delete: "删除",
+  add: "添加",
+  close: "关闭",
+  back: "返回",
+  retry: "重试",
+  noResults: "没有结果",
+  loadingData: "加载中...",
+
+  // Command palette
+  cmdNewChat: "新建对话",
+  cmdSearch: "搜索",
+  cmdToggleSidebar: "切换侧边栏",
+  cmdToggleContext: "切换右侧面板",
+  cmdToggleTheme: "切换主题",
+  cmdToggleDensity: "切换密度",
+  cmdHelp: "使用帮助",
+  cmdShortcuts: "快捷键速查",
+
+  // Slash commands
+  slashClear: "清空当前对话",
+  slashPlan: "切换到 Plan 模式",
+  slashAuto: "切换到 Auto 模式",
+  slashBypass: "跳过所有确认",
+  slashExport: "导出当前对话",
+  slashUsage: "查看用量统计",
+  slashDiag: "打开环境诊断",
+  slashHelp: "使用帮助",
+  slashTheme: "切换亮/暗主题",
+
+  // Errors
+  errProviderUrl: "URL 必须以 http:// 或 https:// 开头",
+  errFieldRequired: "不能为空",
+  errRunTimeout: "模型准备或响应超时，请检查网络、Provider 和当前项目目录。",
+  errClaudeNotFound: "没有找到 Claude Code。请到诊断页点击[检测 Claude]，或手动设置 Claude 路径。",
+  errPermission: "权限不足",
+  errSessionMissing: "这个历史对话已经找不到了，已切换到新对话。",
+
+  // Workspace
+  workspaceExported: "工作空间已导出",
+  workspaceImported: "工作空间已导入",
+  workspaceInvalid: "无效的备份文件",
+  workspaceFormatError: "备份文件格式不正确",
 };

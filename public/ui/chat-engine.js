@@ -2,11 +2,14 @@ import { data, save, state } from "./state.js";
 import { getBridge, safeBridge, curProvider } from "./bridge.js";
 import { $, toast } from "./helpers.js";
 import { escapeHtml } from "../markdown.js";
+import { checkSlashTrigger, handleSlashKeydown, hideSlashPopup, isSlashVisible } from "./slash-commands.js";
+import { sendNotification } from "./notifications.js";
 
 // Module-local state
 export let currentRunId = "";
 export let assistantBuffer = "";
 export let liveThinking = [];
+let stepDoneResolve = null;
 
 // Dependency injection
 let deps = {};
@@ -28,11 +31,68 @@ export function setPerm(pm) {
   deps.updatePermDropdown?.(pm);
 }
 
+async function handleLocalCommand(prompt) {
+  const pluginMatch = prompt.match(/^\/plugin(?:\s+(.+))?$/i);
+  if (pluginMatch) {
+    const name = pluginMatch[1]?.trim();
+    if (!name) {
+      deps.openSettings?.("plugins");
+      toast("输入 /plugin name@marketplace 可直接调用 Claude CLI 安装官方插件。", "info");
+      return true;
+    }
+    toast(`正在安装插件：${name}`);
+    const r = await safeBridge("installPluginByName", null, name);
+    if (r.ok) {
+      toast(`插件已安装：${name}`, "success");
+      await deps.loadPlugins?.();
+      deps.openSettings?.("plugins");
+    } else {
+      toast(r.error || "插件安装失败，请确认名称来自官方 Claude 插件市场。", "error");
+    }
+    return true;
+  }
+  if (/^\/replay$/i.test(prompt)) {
+    deps.openReplayPanel?.();
+    return true;
+  }
+  if (/^\/security$/i.test(prompt)) {
+    deps.openSettings?.("diagnostics");
+    return true;
+  }
+  if (/^\/window$/i.test(prompt)) {
+    const r = await getBridge()?.openWorkspaceWindow?.(state.cwd || "");
+    toast(r?.ok ? "已打开新的本地工作区窗口" : (r?.error || "当前运行环境不支持多窗口"), r?.ok ? "success" : "error");
+    return true;
+  }
+  return false;
+}
+
 export async function submitPrompt(e) {
   e?.preventDefault();
+  if (currentRunId) {
+    toast("当前任务还在运行，请先停止或等待完成。", "info");
+    return;
+  }
   const prompt = $("#promptInput").value.trim();
   if (!prompt) return;
-  if (!state.cwd) { toast("请先在设置中选择项目", "error"); return; }
+  if (await handleLocalCommand(prompt)) {
+    $("#promptInput").value = "";
+    autosize();
+    return;
+  }
+  if (!state.cwd) { toast("请先选择或添加一个项目目录。", "error"); return; }
+  const providerReady = Boolean(curProvider());
+  if (!providerReady) {
+    toast("还没有配置 Provider。可以继续尝试使用默认 Claude，但建议先配置模型服务。", "info");
+  }
+  const git = data.diagnostics?.git;
+  if (git?.ok && git.counts?.conflicted) {
+    toast("当前 Git 工作区存在冲突，请先解决冲突再运行 Agent。", "error");
+    return;
+  }
+  if (!state.claudePath && !data.diagnostics?.claudePath) {
+    toast("尚未检测到 Claude Code，可到诊断页检测或安装。", "info");
+  }
   state.pendingPlanPrompt = state.permissionMode === "plan" ? prompt : "";
   save();
   const bridge = getBridge();
@@ -50,57 +110,169 @@ export async function submitPrompt(e) {
   deps.setRunTimeline?.([]);
   deps.setRunTouchedFiles?.([]);
   deps.setLastTimelineKey?.("");
-  deps.addTimeline?.("info", "提交任务", deps.compactPath?.(state.cwd));
   setRunning(true);
   pushThink("正在准备项目上下文与当前身份");
 
-  if (!bridge?.runClaude) { updateLast("桥接未就绪"); setRunning(false); return; }
+  if (!bridge?.runClaude) {
+    deps.addTimeline?.("error", "启动失败", "桌面桥接还没有准备好");
+    updateLast("桌面桥接还没有准备好。请稍等几秒后重试，或打开诊断页检查运行环境。");
+    setLastRecoveryActions([
+      { label: "打开诊断", action: "diagnostics", tone: "primary" },
+      { label: "重试", action: "retry" },
+    ]);
+    setRunning(false);
+    return;
+  }
   const activeId = data.identities.find(i => i.active);
   if (activeId) await safeBridge("syncIdentitySkills", null, activeId.id);
   const canResume = await deps.validateActiveSession?.();
   const resumeSessionId = canResume ? state.selectedSession || "" : "";
-
-  const r = await bridge.runClaude({
-    runId: currentRunId, prompt: finalPrompt, cwd: state.cwd, claudePath: state.claudePath,
-    mode: resumeSessionId ? "continue" : (state.mode === "continue" ? "normal" : state.mode),
+  deps.startReplayRun?.({
+    runId: currentRunId,
+    prompt: finalPrompt,
+    cwd: state.cwd,
     permissionMode: state.permissionMode || "auto",
-    runnerStrategy: state.runnerStrategy || "seamless",
-    providerId: p?.id || "", sessionId: resumeSessionId,
-    clientSessionKey: resumeSessionId || state.clientSessionKey, extraArgs: [],
+    provider: p?.name || "",
+    sessionId: resumeSessionId,
+    source: "chat",
   });
+  deps.addTimeline?.("info", "提交任务", deps.compactPath?.(state.cwd));
+
+  let r;
+  try {
+    r = await bridge.runClaude({
+      runId: currentRunId, prompt: finalPrompt, cwd: state.cwd, claudePath: state.claudePath,
+      mode: resumeSessionId ? "continue" : (state.mode === "continue" ? "normal" : state.mode),
+      permissionMode: state.permissionMode || "auto",
+      runnerStrategy: state.runnerStrategy || "seamless",
+      providerId: p?.id || "", sessionId: resumeSessionId,
+      clientSessionKey: resumeSessionId || state.clientSessionKey, extraArgs: [],
+    });
+  } catch (error) {
+    r = { ok: false, error: error?.message || String(error || "runClaude failed") };
+  }
   if (!r.ok) {
     if (r.code === "SESSION_MISSING") deps.recoverMissingSession?.(r.error);
     deps.addTimeline?.("error", "准备失败", friendlyRunError(r.error));
+    deps.finishReplayRun?.({ ok: false, error: r.error || "runClaude failed" });
     updateLast(`失败：${friendlyRunError(r.error)}`);
+    setLastRecoveryActions([
+      { label: "重试", action: "retry", tone: "primary" },
+      { label: "打开诊断", action: "diagnostics" },
+      { label: "查看回放", action: "replay" },
+    ]);
     setRunning(false);
   } else {
+    clearLastRecoveryActions();
     deps.setAttachedFiles?.([]);
     deps.renderAttachments?.();
     deps.renderArtifacts?.();
   }
 }
 
+export function isRunning() { return currentRunId !== ""; }
+
+export async function runStepAsync(prompt, { providerId, permissionMode, cwd } = {}) {
+  if (!prompt) return { ok: false, output: "", error: "empty prompt" };
+  const bridge = getBridge();
+  if (!bridge?.runClaude) return { ok: false, output: "", error: "bridge not ready" };
+
+  // Push user + assistant messages
+  state.messages.push({ role: "user", content: prompt }, { role: "assistant", content: "" });
+  save();
+  deps.renderMessages?.();
+
+  assistantBuffer = "";
+  liveThinking = [];
+  currentRunId = crypto.randomUUID();
+  deps.setRunTimeline?.([]);
+  deps.setRunTouchedFiles?.([]);
+  deps.setLastTimelineKey?.("");
+  const provider = data.providers.find(p => p.id === providerId) || curProvider();
+  deps.startReplayRun?.({
+    runId: currentRunId,
+    prompt,
+    cwd: cwd || state.cwd,
+    permissionMode: permissionMode || state.permissionMode || "auto",
+    provider: provider?.name || "",
+    sessionId: "",
+    source: "agent-task",
+  });
+  setRunning(true);
+  pushThink("正在准备项目上下文");
+
+  const r = await bridge.runClaude({
+    runId: currentRunId, prompt, cwd: cwd || state.cwd, claudePath: state.claudePath || "",
+    mode: "normal", permissionMode: permissionMode || state.permissionMode || "auto",
+    runnerStrategy: state.runnerStrategy || "seamless",
+    providerId: providerId || "", sessionId: "", clientSessionKey: state.clientSessionKey, extraArgs: [],
+  });
+
+  if (!r.ok) {
+    deps.addTimeline?.("error", "准备失败", friendlyRunError(r.error));
+    deps.finishReplayRun?.({ ok: false, error: r.error || "runClaude failed" });
+    setRunning(false);
+    return { ok: false, output: "", error: r.error || "runClaude failed" };
+  }
+
+  // Wait for claude:done event
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      stepDoneResolve = null;
+      setRunning(false);
+      resolve({ ok: false, output: assistantBuffer, error: "timeout" });
+    }, 300000); // 5 min timeout per step
+
+    stepDoneResolve = (result) => {
+      clearTimeout(timeout);
+      resolve(result);
+    };
+  });
+}
+
 export function setRunning(on) {
   const btn = $("#runStopBtn");
-  if (on) {
-    btn.className = "run-stop-btn is-stop";
-    btn.textContent = "■";
-    btn.title = "停止";
-    btn.type = "button";
-  } else {
-    btn.className = "run-stop-btn is-send";
-    btn.textContent = "↑";
-    btn.title = "发送";
-    btn.type = "submit";
+  if (btn) {
+    if (on) {
+      btn.className = "run-stop-btn is-stop";
+      btn.innerHTML = '<span aria-hidden="true">■</span>';
+      btn.title = "停止";
+      btn.setAttribute('aria-label', '停止运行');
+      btn.type = "button";
+    } else {
+      btn.className = "run-stop-btn is-send";
+      btn.innerHTML = '<span aria-hidden="true">↑</span>';
+      btn.title = "发送";
+      btn.setAttribute('aria-label', '发送消息');
+      btn.type = "submit";
+    }
   }
-  $("#runnerPill").textContent = on ? "运行中" : "未连接";
-  $("#runnerPill").className = `cfoot-pill${on ? " is-busy" : ""}`;
+  const pill = $("#runnerPill");
+  if (pill) {
+    pill.textContent = on ? "运行中" : "未连接";
+    pill.className = `cfoot-pill${on ? " is-busy" : ""}`;
+  }
   deps.renderContextStack?.();
 }
 
 export function updateLast(content) {
   const last = state.messages[state.messages.length - 1];
   if (last?.role === "assistant") { last.content = content; save(); deps.renderMessages?.(); }
+}
+
+function setLastRecoveryActions(actions = []) {
+  const last = state.messages[state.messages.length - 1];
+  if (last?.role !== "assistant") return;
+  last.recoveryActions = actions;
+  save();
+  deps.renderMessages?.();
+}
+
+function clearLastRecoveryActions() {
+  const last = state.messages[state.messages.length - 1];
+  if (last?.role !== "assistant" || !last.recoveryActions) return;
+  delete last.recoveryActions;
+  save();
 }
 
 export function friendlyProgress(text) {
@@ -146,8 +318,8 @@ export function onClaudeEvent(payload) {
   if (payload.progress) {
     const label = friendlyProgress(payload.progress);
     const hot = payload.status === "running" || label.includes("继续");
-    $("#runnerPill").textContent = label;
-    $("#runnerPill").className = `cfoot-pill ${hot ? "is-hot" : "is-busy"}`;
+    const rp = $("#runnerPill");
+    if (rp) { rp.textContent = label; rp.className = `cfoot-pill ${hot ? "is-hot" : "is-busy"}`; }
   }
   if (payload.activity) pushThink(payload.activity);
   else if (payload.progress && !payload.text) pushThink(payload.progress);
@@ -216,30 +388,104 @@ export function onClaudeDone(p) {
     deps.addTimeline?.("error", "运行失败", errMsg);
     const retryMsg = p.retried ? "（已重试）" : "";
     updateLast(`连接中断${retryMsg}：${errMsg}`);
+    setLastRecoveryActions([
+      { label: "重试", action: "retry", tone: "primary" },
+      { label: "打开诊断", action: "diagnostics" },
+      { label: "安全中心", action: "security" },
+      { label: "查看回放", action: "replay" },
+    ]);
     pushThink("按 Enter 重新发送，或点击右下角状态重新连接");
+    // Show error toast with retry button
+    toast(`运行失败：${errMsg}`, "error", () => retryLastPrompt());
+    sendNotification("Claude Code Studio", `任务失败：${errMsg.slice(0, 80)}`);
   }
 
   if (p.ok && !assistantBuffer) {
     const stderr = String(p.stderr || "").trim();
     updateLast(stderr ? `任务已结束，但没有返回正文。\n\n诊断信息：${friendlyRunError(stderr)}` : "任务已结束，但这次没有返回正文。");
+    setLastRecoveryActions([
+      { label: "查看回放", action: "replay", tone: "primary" },
+      { label: "重试", action: "retry" },
+    ]);
   }
 
-  if (p.ok) deps.addTimeline?.("success", "运行结束", "已完成");
+  if (p.ok) {
+    if (assistantBuffer) clearLastRecoveryActions();
+    deps.addTimeline?.("success", "运行结束", "已完成");
+    sendNotification("Claude Code Studio", "任务已完成");
+  }
 
   currentRunId = "";
+  deps.finishReplayRun?.({ ok: p.ok, stderr: p.stderr || "", error: p.error || "" });
   setRunning(false);
   clearThink();
 
   const pill = $("#runnerPill");
-  pill.textContent = p.keptAlive ? "复用" : (p.ok ? "就绪" : "断开");
-  pill.className = `cfoot-pill${p.keptAlive ? " is-hot" : ""}${!p.ok ? " is-error" : ""}`;
+  if (pill) {
+    pill.textContent = p.keptAlive ? "复用" : (p.ok ? "就绪" : "断开");
+    pill.className = `cfoot-pill${p.keptAlive ? " is-hot" : ""}${!p.ok ? " is-error" : ""}`;
+  }
+
+  // Resolve team workflow step promise
+  if (stepDoneResolve) {
+    const resolve = stepDoneResolve;
+    stepDoneResolve = null;
+    resolve({ ok: p.ok, output: assistantBuffer, stderr: p.stderr || "" });
+  }
+}
+
+export function retryLastPrompt() {
+  // Find last user message
+  for (let i = state.messages.length - 1; i >= 0; i--) {
+    if (state.messages[i].role === 'user') {
+      const input = $("#promptInput");
+      if (input) {
+        input.value = state.messages[i].content;
+        autosize();
+        submitPrompt();
+      }
+      return;
+    }
+  }
+}
+
+// Input history
+const inputHistory = [];
+let historyIndex = -1;
+
+function pushHistory(text) {
+  if (!text.trim()) return;
+  if (inputHistory[inputHistory.length - 1] === text) return;
+  inputHistory.push(text);
+  if (inputHistory.length > 50) inputHistory.shift();
+  historyIndex = -1;
+}
+
+function navigateHistory(direction) {
+  const input = $("#promptInput");
+  if (!input) return;
+  if (!inputHistory.length) return;
+
+  if (direction === 'up') {
+    if (historyIndex === -1) historyIndex = inputHistory.length - 1;
+    else if (historyIndex > 0) historyIndex--;
+  } else {
+    if (historyIndex === -1) return;
+    if (historyIndex < inputHistory.length - 1) historyIndex++;
+    else { historyIndex = -1; input.value = ''; autosize(); return; }
+  }
+
+  input.value = inputHistory[historyIndex] || '';
+  autosize();
+  // Move cursor to end
+  input.setSelectionRange(input.value.length, input.value.length);
 }
 
 export function initChatEngine() {
   const bridge = getBridge();
 
   // Runner pill reconnect
-  $("#runnerPill").addEventListener("click", async () => {
+  $("#runnerPill")?.addEventListener("click", async () => {
     if (!bridge?.reconnectClaude) return;
     await bridge.reconnectClaude();
     toast("已断开所有 Runner 连接", "info");
@@ -250,9 +496,28 @@ export function initChatEngine() {
   });
 
   // Composer events
-  $("#composer").addEventListener("submit", submitPrompt);
+  $("#composer").addEventListener("submit", (e) => {
+    const prompt = $("#promptInput").value.trim();
+    if (prompt) pushHistory(prompt);
+    submitPrompt(e);
+  });
   $("#promptInput").addEventListener("input", autosize);
-  $("#promptInput").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#composer").requestSubmit(); } });
+  $("#promptInput").addEventListener("input", (e) => checkSlashTrigger(e.target));
+  $("#promptInput").addEventListener("keydown", e => {
+    // Handle slash command navigation first
+    if (isSlashVisible()) {
+      if (handleSlashKeydown(e)) return;
+    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#composer").requestSubmit(); }
+    if (e.key === "ArrowUp" && !e.shiftKey) {
+      const input = $("#promptInput");
+      if (input.selectionStart === 0) { e.preventDefault(); navigateHistory('up'); }
+    }
+    if (e.key === "ArrowDown" && !e.shiftKey) {
+      const input = $("#promptInput");
+      if (input.selectionStart === input.value.length) { e.preventDefault(); navigateHistory('down'); }
+    }
+  });
   const composerBox = $(".composer");
   for (const eventName of ["dragenter", "dragover"]) {
     composerBox?.addEventListener(eventName, e => {

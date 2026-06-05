@@ -1,18 +1,23 @@
 import { data, save, state } from "./state.js";
 import { getBridge, safeBridge, runtimeAction } from "./bridge.js";
 import { $, basename, toast } from "./helpers.js";
-import { configure as configureDataLoader, loadProviders, loadSkills, loadSkillCategories, loadIdentities, loadTeams, loadMcp, loadPlugins, loadAutomations, loadUsage, loadRunners, loadDiag, loadProjects, refreshProjectIndex, checkEnv, syncActiveIdentity, mergeCustomProjects, projectIndexState, setProjectIndexState, skillCategoriesLoaded, setSkillCategoriesLoaded, getLastRefresh, setLastRefresh, refreshSettingsIfOpen } from "./data-loader.js";
+import { configure as configureDataLoader, loadProviders, loadSkills, loadSkillCategories, loadIdentities, loadTeams, loadAgentTasks, loadMcp, loadPlugins, loadAutomations, loadUsage, loadRunners, loadDiag, loadProjects, refreshProjectIndex, checkEnv, syncActiveIdentity, mergeCustomProjects, projectIndexState, setProjectIndexState, skillCategoriesLoaded, setSkillCategoriesLoaded, getLastRefresh, setLastRefresh, refreshSettingsIfOpen } from "./data-loader.js";
 import { configure as configureContextFooter, updateFooter, renderContextStack, addTimeline, timelineFromClaudeEvent, setRunTimeline, setRunTouchedFiles, setLastTimelineKey } from "./context-footer.js";
-import { configure as configureMessages, renderMessages, addAttachments, renderAttachments, promptWithAttachments, setAttachedFiles, getAttachedFiles } from "./messages.js";
-import { configure as configureProjectNav, renderProjects, selectProject, renderConvs, selectSession, loadSession, recoverMissingSession, validateActiveSession } from "./project-nav.js";
+import { configure as configureMessages, renderMessages, addAttachments, renderAttachments, promptWithAttachments, setAttachedFiles, getAttachedFiles, exportConversation, openReplayPanel, startReplayRun, recordReplayEvent, finishReplayRun } from "./messages.js";
+import { configure as configureProjectNav, renderProjects, selectProject, renderConvs, selectSession, loadSession, recoverMissingSession, validateActiveSession, initProjectNav } from "./project-nav.js";
 import { configure as configureSearch, openSearchPanel, closeSearchPanel, renderSearchResults } from "./search.js";
 import { configure as configureDropdowns, closeAllDropdowns, populateIdentitiesSubmenu, populateModelDropdown, updateModelLabel, initDropdowns } from "./dropdowns.js";
 import { configure as configureSettings, openSettings, openTeamsBuilder, renderSettingsTab, settingsPage, settingsBody, teamsPage, initSettings } from "./settings/index.js";
 import { configure as configureSetup, claudeSetupState, getClaudeSetupState, handleClaudeDetectResult, initSetup } from "./setup.js";
-import { configure as configureChatEngine, setMode, setPerm, setRunning, autosize, onClaudeEvent, onClaudeStderr, onClaudeDone, handleAskUser, currentRunId, getCurrentRunId, initChatEngine } from "./chat-engine.js";
+import { configure as configureChatEngine, setMode, setPerm, setRunning, autosize, onClaudeEvent, onClaudeStderr, onClaudeDone, handleAskUser, currentRunId, getCurrentRunId, initChatEngine, retryLastPrompt } from "./chat-engine.js";
 import { configure as configureOnboarding, initOnboarding, openHelp } from "./onboarding.js";
 import { switchIdentity as switchIdentitySetting } from "./settings/identities.js";
 import { switchProvider as switchProviderSetting } from "./settings/providers.js";
+import { configure as configureCommandPalette, openCommandPalette, closeCommandPalette, initCommandPalette } from "./command-palette.js";
+import { configure as configureSlashCommands, initSlashCommands } from "./slash-commands.js";
+import { initTooltip } from "./tooltip.js";
+import { initTheme, toggleTheme, cycleDensity } from "./theme.js";
+import { initNotifications } from "./notifications.js";
 
 // Module-local state
 export let initialLoadDone = false;
@@ -43,6 +48,7 @@ export function applyBootstrap(payload) {
   if (Array.isArray(d.mcp)) data.mcp = d.mcp;
   if (Array.isArray(d.identities)) data.identities = d.identities;
   if (Array.isArray(d.teams)) data.teams = d.teams;
+  if (Array.isArray(d.agentTasks)) data.agentTasks = d.agentTasks;
   if (Array.isArray(d.projects)) { data.projects = d.projects; mergeCustomProjects(); }
   if (Array.isArray(d.plugins)) data.plugins = d.plugins;
   if (Array.isArray(d.automations)) data.automations = d.automations;
@@ -160,6 +166,7 @@ export async function boot() {
     loadMcp(),
     loadPlugins(),
     loadRunners(),
+    loadAgentTasks(),
   ]);
   if (bootstrapped) deferWork(loadSecondary, 400);
   else await loadSecondary();
@@ -194,8 +201,35 @@ export async function throttledRefresh(force = false) {
   await refreshProjectIndex();
 }
 
+async function showShortcutModal() {
+  const { showModal } = await import("./modal.js");
+  const shortcuts = [
+    ['Ctrl/⌘ + K', '命令面板'],
+    ['Ctrl/⌘ + N', '新建对话'],
+    ['Ctrl/⌘ + /', '搜索'],
+    ['Ctrl/⌘ + B', '切换侧边栏'],
+    ['Ctrl/⌘ + .', '切换右侧面板'],
+    ['Ctrl/⌘ + Shift + T', '切换主题'],
+    ['Ctrl/⌘ + Shift + D', '切换密度'],
+    ['Esc', '关闭面板 / 停止运行'],
+    ['↑ (输入框)', '上一条历史输入'],
+    ['↓ (输入框)', '下一条历史输入'],
+    ['/ (输入框)', '触发快捷指令'],
+  ];
+  const html = shortcuts.map(([key, desc]) =>
+    `<div class="shortcut-row"><span class="shortcut-desc">${desc}</span><span class="shortcut-keys">${key.split('+').map(k => `<kbd class="kbd">${k.trim()}</kbd>`).join('+')}</span></div>`
+  ).join('');
+  await showModal('键盘快捷键', []);
+  const fieldsEl = document.querySelector('#modalFields');
+  if (fieldsEl) { fieldsEl.innerHTML = `<div class="shortcut-list">${html}</div>`; }
+}
+
 export function initApp() {
   const bridge = getBridge();
+  const openWorkspaceWindow = async () => {
+    const r = await bridge?.openWorkspaceWindow?.(state.cwd || "");
+    toast(r?.ok ? "已打开新的本地工作区窗口" : (r?.error || "当前运行环境不支持多窗口"), r?.ok ? "success" : "error");
+  };
 
   // Window controls
   $("#winMinimize")?.addEventListener("click", () => runtimeAction("WindowMinimise")());
@@ -206,6 +240,7 @@ export function initApp() {
   const brandBtn = $("#brandMenuBtn");
   const brandDropdown = $("#brandDropdown");
   brandBtn?.addEventListener("click", e => {
+    if (!brandDropdown) return;
     e.stopPropagation();
     const isOpen = brandDropdown.classList.contains("is-open");
     closeAllDropdowns();
@@ -229,7 +264,7 @@ export function initApp() {
   // Sidebar toggle
   const sidebar = $("#sidebar");
   const contextStack = $("#contextStack");
-  $("#sidebarToggle").addEventListener("click", () => {
+  $("#sidebarToggle")?.addEventListener("click", () => {
     state.sidebarOpen = !state.sidebarOpen;
     save();
     sidebar.classList.toggle("is-collapsed", !state.sidebarOpen);
@@ -241,13 +276,13 @@ export function initApp() {
   });
 
   // Plan buttons
-  $("#approvePlanBtn").addEventListener("click", () => { if (!state.pendingPlanPrompt) return; $("#promptInput").value = `请按计划执行。\n\n原始任务：${state.pendingPlanPrompt}`; autosize(); state.pendingPlanPrompt = ""; save(); });
-  $("#revisePlanBtn").addEventListener("click", () => { if (!state.pendingPlanPrompt) return; $("#promptInput").value = `请修改计划：\n\n${state.pendingPlanPrompt}`; autosize(); });
-  $("#cancelPlanBtn").addEventListener("click", () => { state.pendingPlanPrompt = ""; save(); });
+  $("#approvePlanBtn")?.addEventListener("click", () => { if (!state.pendingPlanPrompt) return; $("#promptInput").value = `请按计划执行。\n\n原始任务：${state.pendingPlanPrompt}`; autosize(); state.pendingPlanPrompt = ""; save(); });
+  $("#revisePlanBtn")?.addEventListener("click", () => { if (!state.pendingPlanPrompt) return; $("#promptInput").value = `请修改计划：\n\n${state.pendingPlanPrompt}`; autosize(); });
+  $("#cancelPlanBtn")?.addEventListener("click", () => { state.pendingPlanPrompt = ""; save(); });
 
   // Run/stop button
   const runStopBtn = $("#runStopBtn");
-  runStopBtn.addEventListener("click", async e => {
+  runStopBtn?.addEventListener("click", async e => {
     const runId = getCurrentRunId();
     if (runId) {
       e.preventDefault();
@@ -258,7 +293,7 @@ export function initApp() {
 
   // New chat buttons
   $("#newChatBtn")?.addEventListener("click", newChat);
-  $("#newChatBtn2").addEventListener("click", newChat);
+  $("#newChatBtn2")?.addEventListener("click", newChat);
 
   // Search
   $("#searchBtn")?.addEventListener("click", openSearchPanel);
@@ -272,7 +307,11 @@ export function initApp() {
   $("#refreshIndexBtn")?.addEventListener("click", () => throttledRefresh(true));
 
   // Add folder button
-  $("#addFolderBtn").addEventListener("click", async () => {
+  $("#addFolderBtn")?.addEventListener("click", async () => {
+    if (!bridge?.chooseFolder) {
+      toast("当前运行环境不支持选择目录，请在桌面应用中打开。", "error");
+      return;
+    }
     const folder = await bridge?.chooseFolder?.();
     if (!folder) return;
     state.cwd = folder;
@@ -289,14 +328,27 @@ export function initApp() {
     save();
     renderProjects();
     updateFooter();
+    toast(`已选择项目：${basename(folder)}`, "success");
   });
 
   // Keyboard shortcuts
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape" && teamsPage?.classList.contains("is-open")) { teamsPage.classList.remove("is-open"); return; }
-    if (e.key === "Escape" && settingsPage.classList.contains("is-open")) { settingsPage.classList.remove("is-open"); return; }
-    if (e.key === "Escape" && getCurrentRunId() && bridge?.stopClaude) { bridge.stopClaude(getCurrentRunId()); setRunning(false); return; }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n") { e.preventDefault(); newChat(); }
+    const mod = e.ctrlKey || e.metaKey;
+    if (e.key === "Escape") {
+      // Close command palette first
+      const cmdOverlay = $('#cmdPaletteOverlay');
+      if (cmdOverlay?.classList.contains('is-open')) { closeCommandPalette(); return; }
+      if (teamsPage?.classList.contains("is-open")) { teamsPage.classList.remove("is-open"); return; }
+      if (settingsPage.classList.contains("is-open")) { settingsPage.classList.remove("is-open"); return; }
+      if (getCurrentRunId() && bridge?.stopClaude) { bridge.stopClaude(getCurrentRunId()); setRunning(false); return; }
+    }
+    if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); openCommandPalette(); return; }
+    if (mod && e.key.toLowerCase() === "n") { e.preventDefault(); newChat(); return; }
+    if (mod && e.key.toLowerCase() === "/") { e.preventDefault(); openSearchPanel(); return; }
+    if (mod && e.key.toLowerCase() === "b") { e.preventDefault(); $('#sidebarToggle')?.click(); return; }
+    if (mod && e.key === ".") { e.preventDefault(); $('#contextToggle')?.click(); return; }
+    if (mod && e.shiftKey && e.key.toLowerCase() === "t") { e.preventDefault(); toggleTheme(); return; }
+    if (mod && e.shiftKey && e.key.toLowerCase() === "d") { e.preventDefault(); cycleDensity(); return; }
   });
 
   // Bridge event subscriptions
@@ -315,6 +367,7 @@ export function initApp() {
     selProject: () => data.projects.find(p => p.id === state.selectedProject) || data.projects[0] || null,
     updateModelLabel,
     getAttachedFiles,
+    recordReplayEvent,
     friendlyProgress: (text) => String(text || "").replace(/启动中/g, "准备上下文").replace(/启动/g, "准备").replace(/复用 runner/gi, "继续处理").replace(/runner/gi, "工作进程").replace(/进程已退出/g, "已完成"),
   });
   configureMessages({
@@ -322,6 +375,7 @@ export function initApp() {
     renderArtifacts: () => import("./context-footer.js").then(m => m.renderArtifacts()),
     openSettings,
     openTeamsBuilder,
+    retryLastPrompt,
   });
   configureProjectNav({
     renderMessages, updateFooter, setMode, addTimeline,
@@ -330,6 +384,7 @@ export function initApp() {
   configureSearch({
     selectProject, selectSession,
     switchIdentity: (id) => switchIdentitySetting(id, { settingsBody, renderSettingsTab, updateFooter, populateIdentitiesSubmenu }),
+    openTeamsBuilder,
     renderProjects, renderConvs,
   });
   configureDropdowns({
@@ -340,7 +395,7 @@ export function initApp() {
     closeSearchPanel,
   });
   configureSettings({
-    loadPlugins, loadMcp, loadRunners, loadUsage, loadDiag, loadTeams,
+    loadPlugins, loadMcp, loadRunners, loadUsage, loadDiag, loadTeams, loadAgentTasks,
     settingsPage,
     updateFooter, populateModelDropdown, populateIdentitiesSubmenu,
     setPerm,
@@ -360,12 +415,34 @@ export function initApp() {
     validateActiveSession, recoverMissingSession,
     promptWithAttachments, addAttachments,
     setAttachedFiles, setRunTimeline, setRunTouchedFiles, setLastTimelineKey,
+    startReplayRun, finishReplayRun, openReplayPanel, loadPlugins,
     compactPath: (path) => { const text = String(path || ""); if (!text) return "--"; if (text.length <= 42) return text; return `${text.slice(0, 18)}...${text.slice(-20)}`; },
     timelineFromClaudeEvent,
     updatePermDropdown: (pm) => {
       const addDropdown = $("#addMenu");
       if (addDropdown) addDropdown.querySelectorAll(".add-option").forEach(opt => { opt.classList.toggle("is-active", opt.dataset.action === pm); });
     },
+    newChat, openSettings, openHelp,
+    exportConversation,
+  });
+
+  configureCommandPalette({
+    newChat, openSearchPanel, openSettings, openHelp,
+    toggleTheme, cycleDensity, selectProject,
+    switchIdentity: (id) => switchIdentitySetting(id, { settingsBody, renderSettingsTab, updateFooter, populateIdentitiesSubmenu }),
+    switchProvider: (id) => switchProviderSetting(id, { renderSettingsTab, updateFooter, populateModelDropdown }),
+    compactPath: (path) => { const text = String(path || ""); if (!text) return "--"; if (text.length <= 42) return text; return `${text.slice(0, 18)}...${text.slice(-20)}`; },
+    setPerm,
+    showShortcuts: () => showShortcutModal(),
+    exportConversation,
+    openReplayPanel,
+    openWorkspaceWindow,
+  });
+
+  configureSlashCommands({
+    newChat, setPerm, openSettings, openHelp,
+    toggleTheme, autosize: () => autosize(),
+    exportConversation, openReplayPanel, openWorkspaceWindow,
   });
 
   // Initialize sub-modules
@@ -374,13 +451,17 @@ export function initApp() {
   initSetup();
   initOnboarding();
   initChatEngine();
+  initCommandPalette();
+  initSlashCommands();
+  initTooltip();
+  initTheme();
+  initNotifications();
+  initProjectNav();
 
   // Boot
-  try {
-    boot();
-  } catch (e) {
+  boot().catch(e => {
     console.error("Init error:", e);
-  }
+  });
 
   // Auto-refresh
   setInterval(throttledRefresh, 60000);

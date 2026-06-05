@@ -92,7 +92,7 @@ git commit -m "Prepare professional cross-platform GitHub release"
 Upload generated products to GitHub Releases:
 
 ```text
-src-tauri/target/release/bundle/nsis/Claude Code Studio Next_0.1.0_x64-setup.exe
+src-tauri/target/release/bundle/nsis/Claude Code Studio Next_1.0.0_x64-setup.exe
 dist-tauri/Claude-Code-Studio-Next-portable.zip
 GitHub Actions generated macOS/Linux artifacts
 ```

@@ -1,10 +1,12 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const env = { ...process.env };
+const testHome = process.env.CCS_RELEASE_TEST_HOME || join(root, ".tmp", "release-check-home");
+mkdirSync(testHome, { recursive: true });
 
 const rustRoot = "E:\\Rust";
 if (existsSync(join(rustRoot, ".rustup")) && existsSync(join(rustRoot, "cargo", "bin"))) {
@@ -15,14 +17,14 @@ if (existsSync(join(rustRoot, ".rustup")) && existsSync(join(rustRoot, "cargo", 
 
 const steps = [
   ["npm", ["run", "check"]],
-  ["npm", ["test"]],
+  ["npm", ["test"], { HOME: testHome, USERPROFILE: testHome }],
   ["cargo", ["check", "--manifest-path", "src-tauri/Cargo.toml"]],
   ["npm", ["run", "tauri:build:exe"]],
 ];
 
-for (const [cmd, args] of steps) {
+for (const [cmd, args, extraEnv] of steps) {
   console.log(`\n> ${cmd} ${args.join(" ")}`);
-  const result = spawnSync(cmd, args, { cwd: root, env, shell: process.platform === "win32", stdio: "inherit" });
+  const result = spawnSync(cmd, args, { cwd: root, env: { ...env, ...(extraEnv || {}) }, shell: process.platform === "win32", stdio: "inherit" });
   if (result.status !== 0) process.exit(result.status || 1);
 }
 

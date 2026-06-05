@@ -1,5 +1,7 @@
 import { getBridge, safeBridge } from "./bridge.js";
 import { $, toast } from "./helpers.js";
+import { showModal } from "./modal.js";
+import { state, save } from "./state.js";
 
 // Module-local state
 export let claudeSetupState = { installed: true, version: "", dismissed: false };
@@ -14,6 +16,64 @@ export function configure(d) { deps = d; }
 
 export function getClaudeSetupState() { return claudeSetupState; }
 export function setClaudeSetupState(v) { claudeSetupState = v; }
+
+function manualPathPlaceholder() {
+  return claudeSetupState.platform === "win32"
+    ? "C:\\Users\\you\\AppData\\Roaming\\npm\\claude.cmd"
+    : "/Users/you/.local/bin/claude";
+}
+
+function ensureManualPathButton() {
+  const actions = $("#setupBannerActions");
+  if (!actions) return null;
+  let btn = $("#setupManualPath");
+  if (btn) return btn;
+  btn = document.createElement("button");
+  btn.className = "st-btn t-btn--link t-btn--sm";
+  btn.id = "setupManualPath";
+  btn.type = "button";
+  btn.textContent = "手动设置路径";
+  const dismiss = $("#setupBannerDismiss");
+  actions.insertBefore(btn, dismiss || null);
+  btn.addEventListener("click", handleManualClaudePath);
+  return btn;
+}
+
+async function promptManualClaudePath() {
+  const bridge = getBridge();
+  const picked = await bridge?.chooseFile?.();
+  if (picked) return picked;
+  const result = await showModal("手动设置 Claude 路径", [
+    {
+      key: "path",
+      label: "Claude 可执行文件路径",
+      value: state.claudePath || claudeSetupState.claudePath || "",
+      placeholder: manualPathPlaceholder(),
+      required: true,
+    },
+  ]);
+  return result?.path?.trim() || "";
+}
+
+export async function handleManualClaudePath() {
+  if (installRunning) return;
+  const path = await promptManualClaudePath();
+  if (!path) return;
+  const r = await safeBridge("detectClaude", null, path);
+  const d = r?.data || {};
+  if (d.installed) {
+    state.claudePath = d.claudePath || path;
+    save();
+    claudeSetupState = { ...claudeSetupState, ...d };
+    $("#setupBanner")?.classList.add("is-hidden");
+    toast(`Claude Code ${d.version ? "v" + d.version : ""} 已就绪`, "success");
+    deps.boot?.();
+    return;
+  }
+  claudeSetupState = { ...claudeSetupState, ...d };
+  showSetupBanner({ ...d, dismissed: false });
+  toast("这个路径不能运行 Claude Code，请选择 claude、claude.cmd 或 claude.exe。", "error");
+}
 
 export async function fetchAndShowVersions() {
   const r = await safeBridge("fetchClaudeVersions", null);
@@ -56,18 +116,23 @@ export function showSetupBanner(result) {
     banner?.classList.add("is-hidden");
     return;
   }
+  ensureManualPathButton();
   claudeSetupState = { ...claudeSetupState, ...result };
 
   if (!result.hasNpm) {
-    $("#setupBannerTitle").textContent = "未检测到 Node.js 环境";
-    $("#setupBannerMsg").textContent = "安装 Claude Code 需要 npm。请先安装 Node.js（包含 npm）。";
+    const hasRuntime = Boolean(result.hasRuntimeNode || result.nodePath);
+    const isWindows = result.platform === "win32";
+    $("#setupBannerTitle").textContent = hasRuntime ? "需要系统 Node.js/npm" : "未检测到 Node.js/npm";
+    $("#setupBannerMsg").textContent = hasRuntime
+      ? "应用内置 Node 已可运行；安装 Claude Code 仍需要系统 npm。安装完成后点击重新检测。"
+      : "安装 Claude Code 需要系统 Node.js 和 npm。安装完成后点击重新检测。";
     $("#setupBannerIcon").textContent = "🔧";
-    $("#setupBannerInstall").textContent = "一键安装 Node.js";
+    $("#setupBannerInstall").textContent = isWindows ? "安装 Node.js" : "打开 Node.js 下载";
     $("#setupBannerInstall").className = "st-btn t-btn--primary t-btn--sm";
     $("#setupVersionSelect").style.display = "none";
-    $("#setupNodeVersionSelect").style.display = "";
+    $("#setupNodeVersionSelect").style.display = isWindows ? "" : "none";
     banner.classList.remove("is-hidden");
-    fetchAndShowNodeVersions();
+    if (isWindows) fetchAndShowNodeVersions();
   } else {
     $("#setupBannerTitle").textContent = "未检测到 Claude Code";
     $("#setupBannerIcon").textContent = "📦";
@@ -141,6 +206,7 @@ export function handleInstallProgress(payload = {}) {
 
 export function initSetup() {
   const bridge = getBridge();
+  ensureManualPathButton();
 
   $("#setupBannerInstall")?.addEventListener("click", async () => {
     if (installRunning) return;
@@ -153,6 +219,14 @@ export function initSetup() {
         $("#setupBanner").classList.add("is-hidden");
         toast(`Claude Code v${d.version || ""} 已就绪`, "success");
         deps.boot?.();
+      } else {
+        claudeSetupState = { ...claudeSetupState, ...d };
+        showSetupBanner(d);
+        if (d.hasNpm) {
+          toast("Node.js/npm 已就绪，请继续安装 Claude Code。", "success");
+        } else {
+          toast("仍未检测到系统 npm，请确认 Node.js 已安装并重新打开应用。", "info");
+        }
       }
       return;
     }
@@ -160,6 +234,18 @@ export function initSetup() {
     const btn = $("#setupBannerInstall");
 
     if (!claudeSetupState.hasNpm) {
+      if (claudeSetupState.platform !== "win32") {
+        await safeBridge("openNodeDownload", null);
+        toast("已打开 Node.js 下载页面。安装完成后点击重新检测。", "info");
+        installRunning = false;
+        installDone = true;
+        btn.disabled = false;
+        btn.textContent = "重新检测";
+        btn.className = "st-btn t-btn--success t-btn--sm";
+        $("#setupBannerIcon").textContent = "🔗";
+        $("#setupBannerMsg").textContent = "请安装系统 Node.js/npm，然后点击重新检测。";
+        return;
+      }
       const nodeSel = $("#setupNodeVersionSelect");
       const nodeVersion = nodeSel?.value || "latest";
       installRunning = true;

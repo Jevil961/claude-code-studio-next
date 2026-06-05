@@ -51,7 +51,7 @@ mit-license
 ## Suggested Release Notes
 
 ```markdown
-# Claude Code Studio Next 0.1.0
+# Claude Code Studio Next 1.0.0
 
 Claude Code Studio Next is a local-first desktop control center for Claude Code. This first release focuses on making advanced Claude Code workflows easier to organize, inspect, and run cleanly.
 
@@ -72,7 +72,7 @@ Download the package that matches your operating system and CPU architecture fro
 
 ## Requirements
 
-- Node.js 18 or newer.
+- Packaged builds include the desktop backend runtime; Node.js 18+ is still useful for development and Claude Code npm updates.
 - Claude Code installed, or available to install during setup guidance.
 - Packaged desktop builds include the runtime needed to launch the app.
 ```

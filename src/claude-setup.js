@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { execFileSync, spawn } from "node:child_process";
@@ -39,7 +39,7 @@ function which(name) {
   for (const n of names) {
     try {
       const out = execFileSync(isWindows ? "where" : "which", [n], {
-        windowsHide: true, timeout: 3000, encoding: "utf8",
+        windowsHide: true, timeout: 3000, encoding: "utf8", env: toolEnv(),
       });
       const hit = String(out || "").split(/\r?\n/).map(l => l.trim()).find(Boolean);
       if (hit) return hit;
@@ -49,7 +49,22 @@ function which(name) {
 }
 
 function executableCandidates(name) {
-  if (!isWindows) return [];
+  if (!isWindows) {
+    const localBins = [
+      join(homedir(), ".local", "bin"),
+      join(homedir(), ".npm-global", "bin"),
+      join(homedir(), ".yarn", "bin"),
+      join(homedir(), ".config", "yarn", "global", "node_modules", ".bin"),
+      join(homedir(), ".bun", "bin"),
+      ...versionedNodeBins(),
+      "/opt/homebrew/bin",
+      "/usr/local/bin",
+      "/usr/bin",
+      "/bin",
+    ];
+    const ext = name === "node" || name === "npm" || name === "claude" ? name : "";
+    return ext ? localBins.map(root => join(root, ext)) : [];
+  }
   const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
   const localAppData = process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local");
   const programFiles = process.env.ProgramFiles || "C:\\Program Files";
@@ -79,6 +94,25 @@ function executableCandidates(name) {
   return candidates;
 }
 
+function versionedNodeBins() {
+  const bins = [];
+  const nvmRoot = process.env.NVM_DIR || join(homedir(), ".nvm");
+  const nvmVersions = join(nvmRoot, "versions", "node");
+  try {
+    if (existsSync(nvmVersions)) {
+      for (const version of readdirSync(nvmVersions)) {
+        bins.push(join(nvmVersions, version, "bin"));
+      }
+    }
+  } catch {}
+  bins.push(
+    join(homedir(), ".asdf", "shims"),
+    join(homedir(), ".volta", "bin"),
+    join(homedir(), "Library", "pnpm"),
+  );
+  return bins.filter(p => existsSync(p));
+}
+
 function driveNodeRoots() {
   if (!isWindows) return [];
   const roots = [];
@@ -92,9 +126,22 @@ function driveNodeRoots() {
 }
 
 function toolPathDirs() {
-  if (!isWindows) return [];
   const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
   const localAppData = process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local");
+  if (!isWindows) {
+    return [
+      join(homedir(), ".local", "bin"),
+      join(homedir(), ".npm-global", "bin"),
+      join(homedir(), ".yarn", "bin"),
+      join(homedir(), ".config", "yarn", "global", "node_modules", ".bin"),
+      join(homedir(), ".bun", "bin"),
+      ...versionedNodeBins(),
+      "/opt/homebrew/bin",
+      "/usr/local/bin",
+      "/usr/bin",
+      "/bin",
+    ].filter(p => existsSync(p));
+  }
   const programFiles = process.env.ProgramFiles || "C:\\Program Files";
   const programFilesX86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
   return [
@@ -108,34 +155,24 @@ function toolPathDirs() {
 }
 
 function toolEnv() {
-  if (!isWindows) return { ...process.env };
-  const sep = ";";
+  const sep = isWindows ? ";" : ":";
   const extra = toolPathDirs();
-  return { ...process.env, Path: [...extra, process.env.Path || process.env.PATH || ""].filter(Boolean).join(sep) };
+  const path = [...extra, process.env.Path || process.env.PATH || ""].filter(Boolean).join(sep);
+  return isWindows ? { ...process.env, Path: path, PATH: path } : { ...process.env, PATH: path };
 }
 
 function findNodeSync() { return which("node"); }
 function findNpmSync() { return which("npm"); }
 
 function findClaudeSync() {
-  const candidates = [];
-  if (isWindows) {
-    candidates.push(
-      join(homedir(), ".local", "bin", "claude.exe"),
-      join(homedir(), ".local", "bin", "claude.cmd"),
-      join(homedir(), "AppData", "Roaming", "npm", "claude.cmd"),
-      join(homedir(), "AppData", "Roaming", "npm", "claude.exe"),
-    );
-  } else {
-    candidates.push(join(homedir(), ".local", "bin", "claude"));
-  }
+  const candidates = executableCandidates("claude");
   for (const c of candidates) {
     if (c && existsSync(c)) return c;
   }
   for (const n of ["claude.cmd", "claude.exe", "claude"]) {
     try {
       const out = execFileSync(isWindows ? "where" : "which", [n], {
-        windowsHide: true, timeout: 3000, encoding: "utf8",
+        windowsHide: true, timeout: 3000, encoding: "utf8", env: toolEnv(),
       });
       const hit = String(out || "").split(/\r?\n/).map(l => l.trim()).find(Boolean);
       if (hit) return hit;
@@ -152,6 +189,17 @@ function getClaudeVersion(claudePath) {
     const m = String(out).match(/(\d+\.\d+\.\d+)/);
     return m ? m[1] : "";
   } catch { return ""; }
+}
+
+function getNodeVersion(nodePath) {
+  try {
+    const out = execFileSync(nodePath || "node", ["--version"], {
+      windowsHide: true, timeout: 3000, encoding: "utf8", env: toolEnv(),
+    });
+    return String(out || "").trim();
+  } catch {
+    return "";
+  }
 }
 
 export function getConfig() { return readConfig(); }
@@ -173,16 +221,29 @@ export function resetSetup() {
 export function detectClaude(preferredPath = "") {
   const config = readConfig();
   const claudePath = preferredPath && existsSync(preferredPath) ? preferredPath : findClaudeSync();
-  const nodePath = findNodeSync();
+  const systemNodePath = findNodeSync();
   const npmPath = findNpmSync();
   const installed = !!claudePath;
   const version = installed ? getClaudeVersion(claudePath) : "";
-  const hasNode = !!nodePath;
+  const runtimeNodePath = process.execPath || "";
+  const hasRuntimeNode = !!runtimeNodePath;
+  const hasSystemNode = !!systemNodePath;
+  const hasNode = hasSystemNode || hasRuntimeNode;
   const hasNpm = !!npmPath;
   return {
     installed, claudePath: claudePath || "", version,
-    hasNode, nodePath: nodePath || "",
+    hasNode,
+    hasRuntimeNode,
+    runtimeNodePath,
+    runtimeNodeVersion: process.version || "",
+    hasSystemNode,
+    systemNodePath: systemNodePath || "",
+    systemNodeVersion: systemNodePath ? getNodeVersion(systemNodePath) : "",
+    nodePath: systemNodePath || runtimeNodePath || "",
+    nodeVersion: systemNodePath ? getNodeVersion(systemNodePath) : (process.version || ""),
     hasNpm, npmPath: npmPath || "",
+    platform: process.platform,
+    pathSearchDirs: toolPathDirs(),
     dismissed: config.dismissed,
     checkedAt: new Date().toISOString(),
   };
@@ -295,6 +356,11 @@ export function installNode(version) {
       }
     }
 
+    if (!/^\d+\.\d+\.\d+$/.test(ver)) {
+      send({ status: "failed", progress: "版本号格式无效", ok: false, phase: "node", error: `Invalid version: ${ver}` });
+      return;
+    }
+
     const arch = process.arch === "ia32" ? "x86" : "x64";
     const url = `https://nodejs.org/dist/v${ver}/node-v${ver}-${arch}.msi`;
     const msiPath = join(tmpdir(), `node-v${ver}-${arch}.msi`);
@@ -309,10 +375,25 @@ export function installNode(version) {
         send({ status: "failed", progress: "重定向次数过多", ok: false, phase: "node", error: "Too many redirects" });
         return;
       }
-      const mod = downloadUrl.startsWith("https") ? https : http;
+      const isHttps = downloadUrl.startsWith("https");
+      const mod = isHttps ? https : http;
       mod.get(downloadUrl, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          doDownload(res.headers.location, redirects + 1);
+          const redirectUrl = res.headers.location;
+          try {
+            const redirectHost = new URL(redirectUrl).host;
+            const originalHost = new URL(downloadUrl).host;
+            if (redirectHost !== originalHost || !redirectUrl.startsWith("https")) {
+              activeInstalls.delete(installId);
+              send({ status: "failed", progress: "重定向目标不安全", ok: false, phase: "node", error: "Redirect to different host rejected" });
+              return;
+            }
+          } catch {
+            activeInstalls.delete(installId);
+            send({ status: "failed", progress: "重定向 URL 格式无效", ok: false, phase: "node", error: "Invalid redirect URL" });
+            return;
+          }
+          doDownload(redirectUrl, redirects + 1);
           return;
         }
         if (res.statusCode !== 200) {

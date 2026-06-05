@@ -109,14 +109,22 @@ function renderWizard() {
 export function openFirstRunWizard() {
   helpMode = false;
   current = 0;
-  $("#wizardOverlay")?.classList.add("is-open");
+  const overlay = $("#wizardOverlay");
+  overlay?.classList.add("is-open");
+  overlay?.setAttribute('role', 'dialog');
+  overlay?.setAttribute('aria-modal', 'true');
+  overlay?.setAttribute('aria-label', '首次设置向导');
   renderWizard();
 }
 
 export function openHelp() {
   helpMode = true;
   current = 0;
-  $("#wizardOverlay")?.classList.add("is-open");
+  const overlay = $("#wizardOverlay");
+  overlay?.classList.add("is-open");
+  overlay?.setAttribute('role', 'dialog');
+  overlay?.setAttribute('aria-modal', 'true');
+  overlay?.setAttribute('aria-label', '使用帮助');
   renderWizard();
 }
 

@@ -74,8 +74,14 @@ export function setDbForTest(nextDb, nextPath = null, nextClaudeSettingsPath = n
   if (nextClaudeSettingsPath) claudeSettingsPath = nextClaudeSettingsPath;
 }
 
+function requireDb() {
+  if (!db) throw new Error("Database not initialized. Call getDb() first.");
+  return db;
+}
+
 export function query(sql, params = []) {
-  const stmt = db.prepare(sql);
+  const d = requireDb();
+  const stmt = d.prepare(sql);
   if (params.length) stmt.bind(params);
   const rows = [];
   while (stmt.step()) rows.push(stmt.getAsObject());
@@ -89,16 +95,15 @@ export function queryOne(sql, params = []) {
 
 export function persist() {
   if (!db) return;
-  // 如果已有写入在进行中，标记为需要再次写入
   if (persistLock) { persistQueued = true; return; }
   persistLock = true;
   try {
     mkdirSync(dirname(dbPath), { recursive: true });
-    // 直接写入目标文件，避免 Windows 上 rename 的 EPERM 问题
     writeFileSync(dbPath, Buffer.from(db.export()));
+  } catch (e) {
+    console.error("[db] persist failed:", e.message);
   } finally {
     persistLock = false;
-    // 如果有排队的写入请求，执行之
     if (persistQueued) {
       persistQueued = false;
       persist();
@@ -107,7 +112,7 @@ export function persist() {
 }
 
 export function run(sql, params = []) {
-  db.run(sql, params);
+  requireDb().run(sql, params);
   persist();
 }
 

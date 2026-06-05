@@ -53,16 +53,16 @@ export function create({ name, baseUrl, authToken, model, apiFormat, sonnetModel
 }
 
 export function update(id, u) {
-  const row = queryOne(`SELECT settings_config,meta FROM providers WHERE id=? AND app_type='claude'`, [id]);
+  const row = queryOne(`SELECT name,settings_config,meta FROM providers WHERE id=? AND app_type='claude'`, [id]);
   if (!row) throw new Error("Provider not found");
   const cfg = loadJson(row.settings_config, {}); const meta = loadJson(row.meta, {}); const env = cfg.env || {};
-  if (u.name !== undefined) run(`UPDATE providers SET name=? WHERE id=? AND app_type='claude'`, [u.name, id]);
+  const name = u.name !== undefined ? u.name : row.name;
   if (u.baseUrl !== undefined) env.ANTHROPIC_BASE_URL = u.baseUrl;
   if (u.authToken !== undefined) env.ANTHROPIC_AUTH_TOKEN = u.authToken;
   if (u.model !== undefined) env.ANTHROPIC_MODEL = u.model;
   if (u.apiFormat !== undefined) meta.apiFormat = u.apiFormat;
   cfg.env = env;
-  run(`UPDATE providers SET settings_config=?,meta=? WHERE id=? AND app_type='claude'`, [JSON.stringify(cfg), JSON.stringify(meta), id]);
+  run(`UPDATE providers SET name=?,settings_config=?,meta=? WHERE id=? AND app_type='claude'`, [name, JSON.stringify(cfg), JSON.stringify(meta), id]);
   const current = queryOne(`SELECT is_current FROM providers WHERE id=? AND app_type='claude'`, [id]);
   if (current?.is_current) applyProviderToClaudeSettings({ settings_config: JSON.stringify(cfg) });
   return { ok: true };

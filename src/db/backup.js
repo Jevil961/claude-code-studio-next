@@ -42,5 +42,7 @@ function pruneBackups() {
       .filter(item => statSync(item.path).isDirectory())
       .sort((a, b) => b.name.localeCompare(a.name));
     for (const item of dirs.slice(MAX_BACKUPS)) rmSync(item.path, { recursive: true, force: true });
-  } catch {}
+  } catch (e) {
+    console.error("[backup] pruneBackups failed:", e.message);
+  }
 }

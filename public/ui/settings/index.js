@@ -3,6 +3,7 @@ import { $ } from "../helpers.js";
 import { renderProvidersSettings } from "./providers.js";
 import { renderIdentitiesSettings } from "./identities.js";
 import { renderTeamsSettings } from "./teams.js";
+import { renderTasksSettings } from "./tasks.js";
 import { renderSkillsSettings } from "./skills.js";
 import { renderMcpSettings } from "./mcp.js";
 import { renderPluginsSettings } from "./plugins.js";
@@ -47,7 +48,7 @@ export function renderSettingsTab() {
   $("#settingsTabs").querySelectorAll(".stab").forEach(b => b.classList.toggle("is-active", b.dataset.tab === state.panel));
   settingsBody.innerHTML = "";
   settingsBody.classList.toggle("is-teams-builder", state.panel === "teams");
-  const titles = { providers: "Provider 管理", teams: "Teams 工作流", identities: "身份与协作", skills: "Skills 管理", mcp: "MCP 服务", plugins: "插件", runners: "Runner 管理", usage: "用量统计", diagnostics: "诊断", general: "通用设置" };
+  const titles = { providers: "Provider 管理", teams: "Teams 工作流", tasks: "Agent Tasks", identities: "身份与协作", skills: "Skills 管理", mcp: "MCP 服务", plugins: "插件", runners: "Runner 管理", usage: "用量统计", diagnostics: "诊断", general: "通用设置" };
   $("#settingsTitle").textContent = titles[state.panel] || "设置";
 
   const panelDeps = { settingsBody, renderSettingsTab, ...deps };
@@ -55,6 +56,7 @@ export function renderSettingsTab() {
 
   if (state.panel === "providers") renderProvidersSettings(panelDeps);
   if (state.panel === "teams") renderTeamsSettings(panelDeps);
+  if (state.panel === "tasks") renderTasksSettings(panelDeps);
   if (state.panel === "identities") renderIdentitiesSettings(panelDeps);
   if (state.panel === "skills") renderSkillsSettings(panelDeps);
   if (state.panel === "mcp") renderMcpSettings(panelDeps);
@@ -69,6 +71,7 @@ function renderSettingsGuide(tab, body) {
   const copy = {
     providers: ["Provider 是模型服务配置。先添加 API 地址、密钥和默认模型，再点击测试确认可用。", "添加 Provider"],
     teams: ["Teams 是可视化身份工作流。先定义身份，再把节点连成需求、开发、测试、审核的交接流程。", "打开工作台"],
+    tasks: ["Agent Tasks 用独立 branch/worktree 承载复杂任务，是后台 agent、diff、测试和提交链路的基础。", "新建任务"],
     identities: ["身份是一组 Skills 能力集。切换身份会同步对应 Skills，让不同任务使用不同规则。", "自定义身份"],
     skills: ["Skills 是可复用能力说明。先导入或扫描 Skills，再同步到 Claude Code。", "同步预览"],
     mcp: ["MCP 服务为 Claude 提供外部工具。添加后建议先同步预览，再启用并同步。", "添加 MCP"],
@@ -99,6 +102,7 @@ function renderSettingsGuide(tab, body) {
         skills: "previewSkillsBtn",
         mcp: "addMcpBtn",
         plugins: "installPluginBtn",
+        tasks: "createTaskBtn",
         runners: "refreshRunnersBtn",
         diagnostics: "copyReportBtn",
       }[action];
@@ -111,6 +115,7 @@ function titlesForGuide(tab) {
   return {
     providers: "先配置模型服务",
     teams: "用身份组成工作流",
+    tasks: "隔离任务与分支",
     identities: "把 Skills 组织成身份",
     skills: "管理可复用能力",
     mcp: "连接外部工具",
@@ -131,5 +136,21 @@ export function initSettings() {
     state.panel = btn.dataset.tab;
     save();
     renderSettingsTab();
+  });
+  // Keyboard navigation for tabs
+  $("#settingsTabs").addEventListener("keydown", e => {
+    const tabs = [...$("#settingsTabs").querySelectorAll('.stab[data-tab]')];
+    const curIdx = tabs.indexOf(document.activeElement);
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      const next = curIdx < tabs.length - 1 ? curIdx + 1 : 0;
+      tabs[next].focus();
+      tabs[next].click();
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const prev = curIdx > 0 ? curIdx - 1 : tabs.length - 1;
+      tabs[prev].focus();
+      tabs[prev].click();
+    }
   });
 }

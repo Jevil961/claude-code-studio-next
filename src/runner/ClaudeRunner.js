@@ -1,5 +1,5 @@
 import { spawn, execFile, execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { buildArgs, promptForMode, streamInput } from "./claudeArgs.js";
@@ -41,9 +41,22 @@ function execFileText(cmd, args = [], opts = {}) {
 }
 
 function toolPathDirs() {
-  if (!isWindows) return [];
   const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
   const localAppData = process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local");
+  if (!isWindows) {
+    return [
+      join(homedir(), ".local", "bin"),
+      join(homedir(), ".npm-global", "bin"),
+      join(homedir(), ".yarn", "bin"),
+      join(homedir(), ".config", "yarn", "global", "node_modules", ".bin"),
+      join(homedir(), ".bun", "bin"),
+      ...versionedNodeBins(),
+      "/opt/homebrew/bin",
+      "/usr/local/bin",
+      "/usr/bin",
+      "/bin",
+    ].filter(p => existsSync(p));
+  }
   const programFiles = process.env.ProgramFiles || "C:\\Program Files";
   const programFilesX86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
   return [
@@ -54,6 +67,25 @@ function toolPathDirs() {
     ...driveNodeRoots(),
     join(homedir(), ".local", "bin"),
   ].filter(p => existsSync(p));
+}
+
+function versionedNodeBins() {
+  const bins = [];
+  const nvmRoot = process.env.NVM_DIR || join(homedir(), ".nvm");
+  const nvmVersions = join(nvmRoot, "versions", "node");
+  try {
+    if (existsSync(nvmVersions)) {
+      for (const version of readdirSync(nvmVersions)) {
+        bins.push(join(nvmVersions, version, "bin"));
+      }
+    }
+  } catch {}
+  bins.push(
+    join(homedir(), ".asdf", "shims"),
+    join(homedir(), ".volta", "bin"),
+    join(homedir(), "Library", "pnpm"),
+  );
+  return bins.filter(p => existsSync(p));
 }
 
 function driveNodeRoots() {
@@ -69,10 +101,9 @@ function driveNodeRoots() {
 }
 
 function toolEnv(extra = {}) {
-  if (!isWindows) return { ...process.env, ...extra };
-  const sep = ";";
+  const sep = isWindows ? ";" : ":";
   const path = [...toolPathDirs(), process.env.Path || process.env.PATH || ""].filter(Boolean).join(sep);
-  return { ...process.env, Path: path, PATH: path, ...extra };
+  return isWindows ? { ...process.env, Path: path, PATH: path, ...extra } : { ...process.env, PATH: path, ...extra };
 }
 
 async function whereAll(name) {
@@ -109,7 +140,17 @@ export function findClaudeCandidates() {
       join(homedir(), "AppData", "Roaming", "npm", "claude.exe"),
     );
   } else {
-    candidates.push(join(homedir(), ".local", "bin", "claude"));
+    candidates.push(
+      join(homedir(), ".local", "bin", "claude"),
+      join(homedir(), ".npm-global", "bin", "claude"),
+      join(homedir(), ".yarn", "bin", "claude"),
+      join(homedir(), ".config", "yarn", "global", "node_modules", ".bin", "claude"),
+      join(homedir(), ".bun", "bin", "claude"),
+      ...versionedNodeBins().map(dir => join(dir, "claude")),
+      "/opt/homebrew/bin/claude",
+      "/usr/local/bin/claude",
+      "/usr/bin/claude",
+    );
   }
   return candidates;
 }
@@ -124,7 +165,7 @@ export function findClaudeSync() {
   }
   for (const n of ["claude.cmd", "claude.exe", "claude"]) {
     try {
-      const out = execFileSync(isWindows ? "where" : "which", [n], { windowsHide: true, timeout: 1000, encoding: "utf8" });
+      const out = execFileSync(isWindows ? "where" : "which", [n], { windowsHide: true, timeout: 1000, encoding: "utf8", env: toolEnv() });
       const hit = String(out || "").split(/\r?\n/).map(l => l.trim()).find(Boolean);
       if (hit) { writeCache(hit); return hit; }
     } catch {}

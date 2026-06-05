@@ -1,6 +1,6 @@
 import { data, save, sessMeta, state } from "./state.js";
 import { safeBridge, selProject } from "./bridge.js";
-import { $, basename, fmtTime, hlMatch, searchable } from "./helpers.js";
+import { $, basename, fmtTime, hlMatch, searchable, toast } from "./helpers.js";
 import { showConfirm, showModal } from "./modal.js";
 import { escapeHtml } from "../markdown.js";
 
@@ -72,7 +72,20 @@ export function renderConvs() {
   const sessions = (proj?.sessions || [])
     .filter(s => !sessMeta(s.id).archived && !sessMeta(s.id).deleted)
     .sort((a, b) => Number(!!sessMeta(b.id).pinned) - Number(!!sessMeta(a.id).pinned) || (b.updatedAt || 0) - (a.updatedAt || 0));
-  const visibleSessions = sessions.filter(s => {
+  // Apply filter
+  const filter = state.convFilter || 'all';
+  const filteredSessions = sessions.filter(s => {
+    const m = sessMeta(s.id);
+    if (filter === 'pinned') return m.pinned;
+    if (filter === 'recent') {
+      const today = new Date(); today.setHours(0,0,0,0);
+      return (s.updatedAt || 0) * 1000 >= today.getTime();
+    }
+    if (filter === 'archived') return m.archived;
+    return true;
+  });
+
+  const visibleSessions = filteredSessions.filter(s => {
     const m = sessMeta(s.id);
     const title = m.title || s.title || s.id;
     return !term || searchable(`${title} ${s.id}`).includes(term);
@@ -104,11 +117,13 @@ export function showConvContextMenu(e, session, proj) {
   const ctx = $("#ctxMenu");
   const meta = sessMeta(session.id);
   ctx.innerHTML = `
-    <button class="model-option" data-act="pin" type="button">${meta.pinned ? "取消置顶" : "置顶"}</button>
-    <button class="model-option" data-act="rename" type="button">重命名</button>
-    <button class="model-option" data-act="archive" type="button">${meta.archived ? "取消归档" : "归档"}</button>
+    <button class="model-option" data-act="pin" type="button" role="menuitem">${meta.pinned ? "取消置顶" : "置顶"}</button>
+    <button class="model-option" data-act="rename" type="button" role="menuitem">重命名</button>
+    <button class="model-option" data-act="archive" type="button" role="menuitem">${meta.archived ? "取消归档" : "归档"}</button>
+    <button class="model-option" data-act="export-md" type="button" role="menuitem">导出为 Markdown</button>
+    <button class="model-option" data-act="export-json" type="button" role="menuitem">导出为 JSON</button>
     <div style="height:1px;background:var(--td-border-level-2-color);margin:3px 6px;"></div>
-    <button class="model-option" data-act="delete" type="button" style="color:var(--td-error-color);">删除</button>
+    <button class="model-option" data-act="delete" type="button" role="menuitem" style="color:var(--td-error-color);">删除</button>
   `;
   ctx.querySelectorAll("[data-act]").forEach(btn => {
     btn.addEventListener("click", async () => {
@@ -128,6 +143,26 @@ export function showConvContextMenu(e, session, proj) {
         save();
         if (state.selectedSession === session.id) { state.selectedSession = ""; state.messages = []; state.selectedSessionPath = ""; state.mode = "normal"; save(); deps.renderMessages?.(); }
         renderConvs();
+      }
+      if (act === "export-md" || act === "export-json") {
+        const sr = await safeBridge("readSession", null, session.id);
+        if (!sr.ok || !sr.data?.messages) { toast("读取对话失败", "error"); return; }
+        const msgs = sr.data.messages;
+        const title = meta.title || session.title || session.id;
+        let content, filename;
+        if (act === "export-md") {
+          content = msgs.map(m => `## ${m.role === 'user' ? 'User' : 'Assistant'}\n\n${m.content || ''}\n`).join('\n---\n\n');
+          filename = `${title}.md`;
+        } else {
+          content = JSON.stringify({ title, messages: msgs }, null, 2);
+          filename = `${title}.json`;
+        }
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+        toast(`已导出：${filename}`, "success");
       }
     });
   });
@@ -180,6 +215,21 @@ export function recoverMissingSession(error) {
     }];
     save();
     deps.renderMessages?.();
+  }
+}
+
+export function initProjectNav() {
+  // Wire filter bar
+  const filterBar = $('#convFilterBar');
+  if (filterBar) {
+    filterBar.querySelectorAll('.conv-filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.convFilter = btn.dataset.filter;
+        save();
+        filterBar.querySelectorAll('.conv-filter-btn').forEach(b => b.classList.toggle('is-active', b === btn));
+        renderConvs();
+      });
+    });
   }
 }
 

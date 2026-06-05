@@ -80,6 +80,7 @@ test("teams can be user-defined and persisted", async () => {
   assert.match(prompt.prompt, /Previous accepted outputs/);
   assert.match(prompt.prompt, /Risk: context switching can be confusing/);
   assert.match(prompt.prompt, /This is the final mapped step/);
+  assert.match(prompt.prompt, /Final delivery contract/);
   assert.equal(prompt.nextSteps.length, 0);
 
   const firstStepPrompt = teams.composeTeamStepPrompt({
@@ -92,6 +93,8 @@ test("teams can be user-defined and persisted", async () => {
   });
   assert.doesNotMatch(firstStepPrompt.prompt, /later step/);
   assert.match(firstStepPrompt.prompt, /Available handoff routes: Build/);
+  assert.match(firstStepPrompt.prompt, /Handoff contract/);
+  assert.match(firstStepPrompt.prompt, /TEAM_HANDOFF_JSON/);
   assert.equal(firstStepPrompt.nextSteps[0].id, buildStep.id);
 });
 
@@ -104,6 +107,17 @@ test("deleting a team member keeps workflow steps but clears assignment", async 
   const result = teams.deleteTeamMember(team.id, member.id);
 
   assert.equal(result.team.workflow.find(item => item.id === step.id).memberId, "");
+});
+
+test("workflow steps default to automatic handoff unless approval is explicit", async () => {
+  const teams = await import("../src/teams.js");
+  const team = teams.createTeam({ name: "Approval defaults" });
+  const step = teams.createTeamStep(team.id, { name: "Build" }).step;
+
+  assert.equal(step.requiresApproval, false);
+
+  const updated = teams.updateTeamStep(team.id, step.id, { requiresApproval: "true" }).step;
+  assert.equal(updated.requiresApproval, true);
 });
 
 test("teams support conditional review loops and final approval prompts", async () => {

@@ -87,6 +87,14 @@ export async function loadTeams() {
   return r;
 }
 
+export async function loadAgentTasks() {
+  const r = await safeBridge("listAgentTasks", []);
+  recordLoadResult("agentTasks", r, "Agent Tasks");
+  if (r.ok) data.agentTasks = r.data || [];
+  refreshSettingsIfOpen("tasks");
+  return r;
+}
+
 export async function loadMcp() {
   const r = await safeBridge("listMcp", []);
   recordLoadResult("mcp", r, "MCP");
@@ -133,12 +141,22 @@ export async function loadDiag() {
 export async function loadProjects() {
   const r = await safeBridge("listProjects", []);
   if (r.ok) {
+    delete data.loadErrors.projects;
     data.projects = r.data || [];
     mergeCustomProjects();
     projectIndexState = { status: "done", stats: { scannedProjects: data.projects.length }, updatedAt: Date.now(), error: "" };
     lastRefresh = Date.now();
     await deps.validateActiveSession?.();
     deps.renderContextStack?.();
+  }
+  if (!r.ok) {
+    const message = r.error || "项目索引加载失败";
+    data.loadErrors.projects = message;
+    projectIndexState = { status: "error", stats: null, updatedAt: Date.now(), error: message };
+    deps.renderProjects?.();
+    deps.renderConvs?.();
+    deps.renderContextStack?.();
+    toast(message, "error");
   }
   return r;
 }

@@ -23,6 +23,9 @@ export function updateFooter() {
   $("#providerInfo").textContent = p ? `${p.name} · ${p.model || ""}` : "未连接";
   $("#identityInfo").textContent = active ? `${active.icon || ""} ${active.name}` : "未设置身份";
   $("#cwdState").textContent = state.cwd || "未选择项目";
+  const git = data.diagnostics?.git;
+  const branchText = git?.ok ? `${git.branch || "detached"}${git.dirty ? ` · ${git.changedFiles} 改动` : " · clean"}` : "";
+  $("#branchState").textContent = branchText;
   deps.updateModelLabel?.();
   renderContextStack();
 }
@@ -55,11 +58,21 @@ export function renderContextStack() {
   const provider = deps.curProvider?.();
   const identity = data.identities.find(i => i.active);
   const project = deps.selProject?.();
+  const git = data.diagnostics?.git || null;
+  const readyItems = [
+    { ok: Boolean(provider), label: "Provider" },
+    { ok: Boolean(state.cwd || project?.path), label: "Project" },
+    { ok: Boolean(state.claudePath || data.diagnostics?.claudePath), label: "Claude" },
+  ];
+  const readyScore = readyItems.filter(item => item.ok).length;
   const rows = [];
+  appendKv(rows, "Readiness", `${readyScore}/${readyItems.length} ${readyScore === readyItems.length ? "就绪" : "待配置"}`, readyScore === readyItems.length ? "" : "plan");
   appendKv(rows, "Provider", provider ? provider.name : "--");
   appendKv(rows, "Model", provider?.model || "--");
   appendKv(rows, "Identity", identity ? `${identity.icon || ""} ${identity.name}` : "--");
   appendKv(rows, "Project", project?.path ? basename(project.path) : (state.cwd ? basename(state.cwd) : "--"));
+  if (git?.ok) appendKv(rows, "Git", `${git.branch || "detached"} · ${git.dirty ? `${git.changedFiles} 改动` : "clean"}`, git.counts?.conflicted ? "danger" : git.dirty ? "plan" : "");
+  else appendKv(rows, "Git", git?.reason === "not-git-repo" ? "非 Git 项目" : "--");
   appendKv(rows, "Permission", state.permissionMode || "auto", state.permissionMode === "bypass" ? "danger" : state.permissionMode === "plan" ? "plan" : "");
   appendKv(rows, "MCP", `${data.mcp.filter(m => m.enabled !== false).length}/${data.mcp.length || 0}`);
   appendKv(rows, "Skills", String(data.skills.length || 0));
@@ -74,8 +87,10 @@ export function addTimeline(type, title, detail = "") {
   const key = `${type}:${title}:${detail}`;
   if (key === lastTimelineKey) return;
   lastTimelineKey = key;
-  runTimeline.unshift({ type, title, detail, at: Date.now() });
+  const item = { type, title, detail, at: Date.now() };
+  runTimeline.unshift(item);
   runTimeline = runTimeline.slice(0, 60);
+  deps.recordReplayEvent?.(item);
   renderRunTimeline();
 }
 
@@ -162,6 +177,7 @@ export function timelineFromClaudeEvent(event, payload = {}) {
         for (const path of paths) {
           if (!runTouchedFiles.includes(path)) runTouchedFiles.unshift(path);
         }
+        if (paths.length) deps.recordReplayEvent?.({ type: "tool", title: "关联文件", detail: `${toolName} · ${paths.length} 个路径`, at: Date.now(), paths });
       }
     }
   }

@@ -28,7 +28,7 @@ Le projet vise Windows, macOS et Linux. La version Windows x64 est validée loca
 
 Les utilisateurs finaux doivent télécharger les paquets depuis GitHub Releases. Sous Windows, utilisez l'installateur ou l'archive portable. Sous macOS, utilisez le DMG. Sous Linux, utilisez AppImage ou le paquet Debian lorsque disponible.
 
-Node.js 18 ou plus récent doit être disponible dans `PATH`. Claude Code doit être installé, sinon l'application affichera une aide de configuration.
+Les builds empaquetés incluent le runtime du backend desktop. Claude Code doit être installé, sinon l'application affichera une aide de configuration; Node.js/npm système peut encore servir aux mises à jour npm de Claude Code.
 
 ## Développement
 
@@ -51,4 +51,4 @@ Les binaires générés ne doivent pas être commis dans Git. Ils doivent être 
 
 ## État Actuel
 
-La version `0.1.0` est prête pour une publication GitHub. Node.js reste une dépendance d'exécution documentée. La signature de code et la mise à jour automatique ne sont pas encore activées.
+La version `1.0.0` est prête pour une publication GitHub. Les builds empaquetés incluent le runtime backend. La signature de code et la mise à jour automatique ne sont pas encore activées.
