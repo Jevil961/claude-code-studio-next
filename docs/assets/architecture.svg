@@ -1,76 +1,67 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
   <title id="title">Claude Code Studio Next architecture</title>
-  <desc id="desc">A clean architecture diagram showing the Tauri desktop shell, hidden Node backend, local data, Claude Code runner, and operating system integrations.</desc>
+  <desc id="desc">Architecture diagram showing the Tauri shell, modular frontend, local Node backend, local database, providers, MCP services, Skills, Teams workflows, and Claude Code runners.</desc>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#10131a"/>
-      <stop offset="1" stop-color="#1b1f2a"/>
-    </linearGradient>
-    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#232a36"/>
-      <stop offset="1" stop-color="#171c25"/>
-    </linearGradient>
     <style>
-      .title{font:700 34px Segoe UI,Inter,Arial,sans-serif;fill:#f8fafc}
-      .subtitle{font:400 17px Segoe UI,Inter,Arial,sans-serif;fill:#aeb8c8}
-      .label{font:700 20px Segoe UI,Inter,Arial,sans-serif;fill:#f8fafc}
-      .text{font:400 15px Segoe UI,Inter,Arial,sans-serif;fill:#c9d3e3}
-      .small{font:600 13px Segoe UI,Inter,Arial,sans-serif;fill:#95a3b8}
-      .card{fill:url(#panel);stroke:#384254;stroke-width:1.2}
-      .accent{fill:#33d6a6}
-      .blue{fill:#4aa3ff}
-      .purple{fill:#9b7cff}
-      .line{stroke:#536071;stroke-width:2.2;fill:none;marker-end:url(#arrow)}
+      .bg{fill:#0f172a}
+      .card{fill:#111827;stroke:#334155;stroke-width:1.2}
+      .inner{fill:#172033;stroke:#3a4a63;stroke-width:1}
+      .title{font:800 32px Segoe UI,Inter,Arial,sans-serif;fill:#f8fafc}
+      .sub{font:500 16px Segoe UI,Inter,Arial,sans-serif;fill:#9fb0c7}
+      .label{font:750 18px Segoe UI,Inter,Arial,sans-serif;fill:#eef2ff}
+      .text{font:500 14px Segoe UI,Inter,Arial,sans-serif;fill:#b7c3d7}
+      .small{font:700 12px Segoe UI,Inter,Arial,sans-serif;fill:#7f8da3}
+      .line{stroke:#607089;stroke-width:2.2;fill:none;marker-end:url(#arrow)}
     </style>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L0,6 L9,3 z" fill="#536071"/>
+      <path d="M0,0 L0,6 L9,3 z" fill="#607089"/>
     </marker>
   </defs>
-  <rect width="1200" height="520" rx="28" fill="url(#bg)"/>
-  <text class="title" x="56" y="68">Runtime architecture</text>
-  <text class="subtitle" x="56" y="100">A native Tauri shell with a hidden Node backend and short-lived Claude Code task runners.</text>
+  <rect width="1200" height="560" rx="28" class="bg"/>
+  <text x="54" y="64" class="title">Runtime architecture</text>
+  <text x="54" y="96" class="sub">Native shell, modular UI, local backend, local data, and short-lived Claude Code runners.</text>
 
-  <rect class="card" x="56" y="150" width="250" height="210" rx="16"/>
-  <circle class="blue" cx="86" cy="186" r="9"/>
-  <text class="label" x="106" y="193">Tauri desktop</text>
-  <text class="text" x="82" y="234">Window lifecycle</text>
-  <text class="text" x="82" y="264">Native dialogs</text>
-  <text class="text" x="82" y="294">Clipboard and paths</text>
-  <text class="text" x="82" y="324">Packaging and cleanup</text>
+  <rect x="54" y="142" width="220" height="270" rx="18" class="card"/>
+  <text x="84" y="184" class="label">Tauri shell</text>
+  <text x="84" y="226" class="text">Native windows</text>
+  <text x="84" y="256" class="text">File dialogs</text>
+  <text x="84" y="286" class="text">Process lifecycle</text>
+  <text x="84" y="316" class="text">Packaged runtime</text>
 
-  <rect class="card" x="386" y="125" width="280" height="260" rx="16"/>
-  <circle class="accent" cx="416" cy="162" r="9"/>
-  <text class="label" x="436" y="169">Hidden Node backend</text>
-  <text class="text" x="412" y="210">Provider and model logic</text>
-  <text class="text" x="412" y="240">Skills and MCP management</text>
-  <text class="text" x="412" y="270">Project/session indexing</text>
-  <text class="text" x="412" y="300">Diagnostics and usage cache</text>
-  <text class="text" x="412" y="330">Claude runner orchestration</text>
+  <rect x="354" y="118" width="260" height="318" rx="18" class="card"/>
+  <text x="386" y="158" class="label">Frontend modules</text>
+  <rect x="386" y="188" width="184" height="34" rx="9" class="inner"/>
+  <text x="406" y="211" class="text">Chat workspace</text>
+  <rect x="386" y="238" width="184" height="34" rx="9" class="inner"/>
+  <text x="406" y="261" class="text">Teams builder</text>
+  <rect x="386" y="288" width="184" height="34" rx="9" class="inner"/>
+  <text x="406" y="311" class="text">Settings surfaces</text>
+  <rect x="386" y="338" width="184" height="34" rx="9" class="inner"/>
+  <text x="406" y="361" class="text">Task center</text>
 
-  <rect class="card" x="746" y="92" width="190" height="146" rx="16"/>
-  <circle class="purple" cx="776" cy="128" r="9"/>
-  <text class="label" x="796" y="135">Local data</text>
-  <text class="text" x="772" y="174">SQL.js database</text>
-  <text class="text" x="772" y="204">Backups and caches</text>
+  <rect x="704" y="118" width="270" height="318" rx="18" class="card"/>
+  <text x="736" y="158" class="label">Local Node backend</text>
+  <text x="736" y="204" class="text">Provider/model routing</text>
+  <text x="736" y="234" class="text">Skills and identity sync</text>
+  <text x="736" y="264" class="text">MCP service management</text>
+  <text x="736" y="294" class="text">Teams orchestration</text>
+  <text x="736" y="324" class="text">Diagnostics and backups</text>
+  <text x="736" y="354" class="text">Claude runner lifecycle</text>
 
-  <rect class="card" x="746" y="282" width="190" height="146" rx="16"/>
-  <circle class="blue" cx="776" cy="318" r="9"/>
-  <text class="label" x="796" y="325">Claude Code</text>
-  <text class="text" x="772" y="364">Task process</text>
-  <text class="text" x="772" y="394">Streaming output</text>
+  <rect x="1010" y="128" width="136" height="110" rx="16" class="card"/>
+  <text x="1030" y="168" class="label">Data</text>
+  <text x="1030" y="200" class="text">SQL.js</text>
+  <text x="1030" y="224" class="text">Backups</text>
 
-  <rect class="card" x="1006" y="177" width="138" height="166" rx="16"/>
-  <circle class="accent" cx="1036" cy="214" r="9"/>
-  <text class="label" x="1056" y="221">OS</text>
-  <text class="text" x="1032" y="260">Windows</text>
-  <text class="text" x="1032" y="290">macOS</text>
-  <text class="text" x="1032" y="320">Linux</text>
+  <rect x="1010" y="276" width="136" height="128" rx="16" class="card"/>
+  <text x="1030" y="316" class="label">Runners</text>
+  <text x="1030" y="348" class="text">Claude Code</text>
+  <text x="1030" y="372" class="text">MCP tools</text>
+  <text x="1030" y="396" class="text">Providers</text>
 
-  <path class="line" d="M306 255 C336 255 350 255 386 255"/>
-  <path class="line" d="M666 220 C696 190 710 165 746 165"/>
-  <path class="line" d="M666 310 C702 330 710 355 746 355"/>
-  <path class="line" d="M936 165 C970 188 986 216 1006 248"/>
-  <path class="line" d="M936 355 C970 330 986 300 1006 272"/>
-
-  <text class="small" x="56" y="444">Design principle: keep the UI native and calm, keep backend work explicit, and keep Claude Code processes short-lived.</text>
+  <path d="M274 277 C318 277 326 277 354 277" class="line"/>
+  <path d="M614 277 C658 277 666 277 704 277" class="line"/>
+  <path d="M974 220 C994 204 998 196 1010 190" class="line"/>
+  <path d="M974 338 C994 348 998 354 1010 360" class="line"/>
+  <text x="54" y="500" class="small">Privacy model: keep configuration, project cache, diagnostics, and workflow state local unless the user explicitly exports or pushes data.</text>
 </svg>

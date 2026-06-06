@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="440" viewBox="0 0 1200 440" role="img" aria-labelledby="title desc">
+  <title id="title">Teams workflow builder</title>
+  <desc id="desc">A visual Teams workflow showing a task moving from user input to project manager, developer, QA loop, final approval, and output.</desc>
+  <defs>
+    <style>
+      .bg{fill:#0b1020}
+      .panel{fill:#111827;stroke:#2f3f58;stroke-width:1.2}
+      .node{fill:#172033;stroke:#4b5f7a;stroke-width:1.4}
+      .start{stroke:#36d6a6}
+      .dev{stroke:#4aa3ff}
+      .qa{stroke:#f5c451}
+      .out{stroke:#a78bfa}
+      .title{font:800 31px Segoe UI,Inter,Arial,sans-serif;fill:#f8fafc}
+      .sub{font:500 16px Segoe UI,Inter,Arial,sans-serif;fill:#9fb0c7}
+      .label{font:800 17px Segoe UI,Inter,Arial,sans-serif;fill:#eef2ff}
+      .text{font:500 13px Segoe UI,Inter,Arial,sans-serif;fill:#aebad0}
+      .line{stroke:#64748b;stroke-width:2.4;fill:none;marker-end:url(#arrow)}
+      .loop{stroke:#f5c451;stroke-width:2.4;fill:none;marker-end:url(#arrow)}
+      .yes{font:800 12px Segoe UI,Inter,Arial,sans-serif;fill:#86efac}
+      .no{font:800 12px Segoe UI,Inter,Arial,sans-serif;fill:#fca5a5}
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#64748b"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="440" rx="28" class="bg"/>
+  <text x="52" y="64" class="title">Teams as visual workflows</text>
+  <text x="52" y="96" class="sub">Users define identities, drag them into a flow, configure handoffs, and let review loops continue until approval.</text>
+
+  <rect x="54" y="128" width="1092" height="268" rx="20" class="panel"/>
+
+  <rect x="92" y="204" width="130" height="72" rx="16" class="node start"/>
+  <text x="124" y="234" class="label">Start</text>
+  <text x="112" y="258" class="text">User task</text>
+
+  <rect x="294" y="190" width="156" height="100" rx="18" class="node start"/>
+  <text x="326" y="232" class="label">Project PM</text>
+  <text x="322" y="258" class="text">Clarify and plan</text>
+
+  <rect x="522" y="190" width="156" height="100" rx="18" class="node dev"/>
+  <text x="558" y="232" class="label">Developer</text>
+  <text x="552" y="258" class="text">Implement changes</text>
+
+  <rect x="750" y="190" width="156" height="100" rx="18" class="node qa"/>
+  <text x="790" y="232" class="label">QA</text>
+  <text x="774" y="258" class="text">Review and retry</text>
+
+  <rect x="978" y="190" width="128" height="100" rx="18" class="node out"/>
+  <text x="1010" y="232" class="label">Output</text>
+  <text x="1000" y="258" class="text">Final answer</text>
+
+  <path d="M222 240 H294" class="line"/>
+  <path d="M450 240 H522" class="line"/>
+  <path d="M678 240 H750" class="line"/>
+  <path d="M906 240 H978" class="line"/>
+  <path d="M828 290 C805 346 560 346 600 290" class="loop"/>
+  <path d="M828 190 C805 146 360 146 372 190" class="loop"/>
+  <text x="690" y="340" class="no">needs fix</text>
+  <text x="690" y="154" class="yes">approved</text>
+</svg>

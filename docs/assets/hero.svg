@@ -1,29 +1,77 @@
-<svg width="1280" height="640" viewBox="0 0 1280 640" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1280" height="640" rx="32" fill="#0D1117"/>
-  <rect x="44" y="44" width="1192" height="552" rx="24" fill="#111827" stroke="#263244"/>
-  <rect x="78" y="86" width="250" height="468" rx="18" fill="#0B1220" stroke="#243044"/>
-  <rect x="352" y="86" width="576" height="468" rx="18" fill="#0F172A" stroke="#2A3650"/>
-  <rect x="952" y="86" width="250" height="468" rx="18" fill="#0B1220" stroke="#243044"/>
-  <text x="96" y="128" fill="#E5E7EB" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="700">Projects</text>
-  <rect x="96" y="158" width="196" height="44" rx="10" fill="#1F2937"/>
-  <rect x="96" y="218" width="196" height="44" rx="10" fill="#111827" stroke="#374151"/>
-  <rect x="96" y="278" width="196" height="44" rx="10" fill="#111827" stroke="#374151"/>
-  <text x="386" y="132" fill="#F9FAFB" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="800">Claude Code Studio Next</text>
-  <text x="386" y="170" fill="#9CA3AF" font-family="Segoe UI, Arial, sans-serif" font-size="18">Tauri desktop studio for providers, Skills, MCP, history, and diagnostics.</text>
-  <rect x="386" y="218" width="508" height="70" rx="14" fill="#172033" stroke="#334155"/>
-  <text x="414" y="260" fill="#D1D5DB" font-family="Segoe UI, Arial, sans-serif" font-size="18">Memory-first Claude runner</text>
-  <circle cx="858" cy="253" r="10" fill="#22C55E"/>
-  <rect x="386" y="316" width="508" height="70" rx="14" fill="#172033" stroke="#334155"/>
-  <text x="414" y="358" fill="#D1D5DB" font-family="Segoe UI, Arial, sans-serif" font-size="18">Identity-based Skills sync</text>
-  <circle cx="858" cy="351" r="10" fill="#38BDF8"/>
-  <rect x="386" y="414" width="508" height="70" rx="14" fill="#172033" stroke="#334155"/>
-  <text x="414" y="456" fill="#D1D5DB" font-family="Segoe UI, Arial, sans-serif" font-size="18">Diagnostics and release-ready packaging</text>
-  <circle cx="858" cy="449" r="10" fill="#F59E0B"/>
-  <text x="978" y="128" fill="#E5E7EB" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="700">Runtime</text>
-  <text x="978" y="180" fill="#A7F3D0" font-family="Segoe UI, Arial, sans-serif" font-size="18">Windows</text>
-  <text x="978" y="226" fill="#BFDBFE" font-family="Segoe UI, Arial, sans-serif" font-size="18">macOS</text>
-  <text x="978" y="272" fill="#FDE68A" font-family="Segoe UI, Arial, sans-serif" font-size="18">Linux</text>
-  <text x="978" y="338" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="16">x64 / ARM64 builds</text>
-  <text x="978" y="380" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="16">Node backend bridge</text>
-  <text x="978" y="422" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="16">Tauri native shell</text>
+<svg width="1280" height="720" viewBox="0 0 1280 720" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Claude Code Studio Next product preview</title>
+  <desc id="desc">A polished desktop product preview showing projects, chat, Teams workflow status, provider health, and task runs.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="0.48" stop-color="#111827"/>
+      <stop offset="1" stop-color="#14151f"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#36d6a6"/>
+      <stop offset="1" stop-color="#4aa3ff"/>
+    </linearGradient>
+    <style>
+      .title{font:800 36px Segoe UI,Inter,Arial,sans-serif;fill:#f8fafc}
+      .sub{font:500 17px Segoe UI,Inter,Arial,sans-serif;fill:#9fb0c7}
+      .label{font:750 17px Segoe UI,Inter,Arial,sans-serif;fill:#e8edf6}
+      .text{font:500 14px Segoe UI,Inter,Arial,sans-serif;fill:#aab7ca}
+      .tiny{font:700 12px Segoe UI,Inter,Arial,sans-serif;fill:#718096}
+      .panel{fill:#111827;stroke:#263246;stroke-width:1.2}
+      .soft{fill:#172033;stroke:#304058;stroke-width:1}
+      .line{stroke:#42526a;stroke-width:2;fill:none}
+    </style>
+  </defs>
+  <rect width="1280" height="720" rx="34" fill="url(#bg)"/>
+  <rect x="46" y="44" width="1188" height="632" rx="28" fill="#0e1525" stroke="#273346" stroke-width="1.4"/>
+
+  <rect x="74" y="76" width="238" height="568" rx="18" class="panel"/>
+  <text x="98" y="116" class="label">Projects</text>
+  <rect x="96" y="144" width="190" height="42" rx="10" fill="#1b2638"/>
+  <rect x="96" y="204" width="190" height="42" rx="10" fill="#111827" stroke="#2a3850"/>
+  <rect x="96" y="264" width="190" height="42" rx="10" fill="#111827" stroke="#2a3850"/>
+  <rect x="96" y="530" width="190" height="66" rx="14" fill="#0d1321" stroke="#2b394e"/>
+  <text x="116" y="558" class="text">Provider</text>
+  <circle cx="258" cy="553" r="7" fill="#36d6a6"/>
+  <text x="116" y="582" class="tiny">Claude Code ready</text>
+
+  <rect x="334" y="76" width="540" height="568" rx="18" class="panel"/>
+  <text x="370" y="126" class="title">Claude Code Studio Next</text>
+  <text x="370" y="158" class="sub">Providers, identities, Teams workflows, MCP, diagnostics, and task runs.</text>
+
+  <rect x="370" y="204" width="468" height="74" rx="16" class="soft"/>
+  <text x="396" y="236" class="label">Submit a task</text>
+  <text x="396" y="260" class="text">Describe the goal, attach project context, then run directly or through a Team.</text>
+
+  <rect x="370" y="314" width="468" height="180" rx="16" fill="#0d1321" stroke="#2b394e"/>
+  <text x="396" y="352" class="label">Teams workflow</text>
+  <circle cx="430" cy="410" r="25" fill="#132237" stroke="#36d6a6" stroke-width="2"/>
+  <circle cx="560" cy="410" r="25" fill="#132237" stroke="#4aa3ff" stroke-width="2"/>
+  <circle cx="690" cy="410" r="25" fill="#132237" stroke="#f5c451" stroke-width="2"/>
+  <path d="M455 410 H535 M585 410 H665" class="line"/>
+  <path d="M690 435 C655 478 520 478 560 435" class="line"/>
+  <text x="405" y="458" class="tiny">PM</text>
+  <text x="535" y="458" class="tiny">DEV</text>
+  <text x="666" y="458" class="tiny">QA LOOP</text>
+
+  <rect x="370" y="526" width="468" height="56" rx="14" fill="url(#accent)" opacity="0.95"/>
+  <text x="396" y="561" style="font:800 17px Segoe UI,Inter,Arial,sans-serif;fill:#06111f">Local-first desktop control for serious Claude Code work</text>
+
+  <rect x="896" y="76" width="238" height="274" rx="18" class="panel"/>
+  <text x="920" y="116" class="label">Runtime health</text>
+  <text x="920" y="158" class="text">Bridge connected</text>
+  <text x="920" y="194" class="text">MCP services visible</text>
+  <text x="920" y="230" class="text">Skills sync ready</text>
+  <text x="920" y="266" class="text">Runner cleanup active</text>
+  <rect x="920" y="294" width="98" height="30" rx="15" fill="#113124"/>
+  <text x="942" y="314" style="font:800 12px Segoe UI,Inter,Arial,sans-serif;fill:#86efac">READY</text>
+
+  <rect x="896" y="374" width="238" height="270" rx="18" class="panel"/>
+  <text x="920" y="414" class="label">Task center</text>
+  <rect x="920" y="442" width="190" height="40" rx="10" fill="#172033"/>
+  <rect x="920" y="498" width="190" height="40" rx="10" fill="#172033"/>
+  <rect x="920" y="554" width="190" height="40" rx="10" fill="#172033"/>
+  <text x="940" y="467" class="text">Diff review</text>
+  <text x="940" y="523" class="text">Session replay</text>
+  <text x="940" y="579" class="text">Batch tasks</text>
 </svg>
