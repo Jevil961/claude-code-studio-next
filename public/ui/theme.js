@@ -30,9 +30,9 @@ export function cycleDensity() {
 
 export function initTheme() {
   if (typeof document === 'undefined' || !document.documentElement) return;
-  // Restore theme
-  const prefersLight = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: light)').matches;
-  const theme = state.theme || (prefersLight ? 'light' : 'dark');
+  // Restore theme. Developer tools should default to a stable dark workbench;
+  // users can still switch to light mode explicitly.
+  const theme = state.theme || 'dark';
   document.documentElement.dataset.theme = theme;
   if (!state.theme) { state.theme = theme; save(); }
 

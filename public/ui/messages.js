@@ -32,9 +32,14 @@ export function renderMessages() {
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M7 8h10M7 12h7M7 16h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" stroke-width="1.7"/></svg>
         </div>
         <b>把第一个工程任务交给 Claude Code</b>
-        <span>${hasProject ? "描述你要分析、修改或生成的目标；我会把项目目录、身份和附件一起传给运行器。" : "先添加一个代码目录，再描述你希望 Claude Code 完成的工作。"}</span>
+        <span>${hasProject ? "描述你要分析、修改或生成的目标；系统会把项目目录、身份和附件一起传给运行器。" : "先添加一个代码目录，再描述你希望 Claude Code 完成的工作。"}</span>
+        <div class="empty-prompts" aria-label="任务示例">
+          <button type="button" data-empty-prompt="请阅读当前项目并总结架构、启动方式和最重要的风险点。">项目体检</button>
+          <button type="button" data-empty-prompt="请检查最近的代码改动，按严重程度列出 bug、风险和测试缺口。">代码审查</button>
+          <button type="button" data-empty-prompt="请根据当前需求拆分实现计划，先不要改代码。">生成计划</button>
+        </div>
         <div class="empty-checklist">
-          ${checklist.map(item => `<span class="${item.done ? "is-done" : ""}">${item.done ? "✓" : "•"} ${item.label}</span>`).join("")}
+          ${checklist.map(item => `<span class="${item.done ? "is-done" : ""}">${item.done ? "OK" : "待办"} ${item.label}</span>`).join("")}
         </div>
         <div class="empty-actions">
           ${hasProject ? "" : '<button class="st-btn t-btn--primary t-btn--sm" id="emptyAddProject" type="button">添加项目</button>'}
@@ -48,6 +53,15 @@ export function renderMessages() {
     transcript.querySelector("#emptyFocusPrompt")?.addEventListener("click", () => $("#promptInput")?.focus());
     transcript.querySelector("#emptyOpenProviders")?.addEventListener("click", () => deps.openSettings?.("providers"));
     transcript.querySelector("#emptyOpenTeams")?.addEventListener("click", () => deps.openTeamsBuilder?.());
+    transcript.querySelectorAll("[data-empty-prompt]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const input = $("#promptInput");
+        if (!input) return;
+        input.value = btn.dataset.emptyPrompt || "";
+        input.focus();
+        input.dispatchEvent(new Event("input"));
+      });
+    });
     return;
   }
   const tpl = $("#tplMessage");

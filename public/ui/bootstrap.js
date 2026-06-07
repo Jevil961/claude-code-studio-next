@@ -31,6 +31,20 @@ export function newChat() {
   save(); renderMessages(); $("#promptInput").focus();
 }
 
+function setQuickNavActive(key = "chat") {
+  document.querySelectorAll(".side-nav-btn[data-quick]").forEach(btn => {
+    btn.classList.toggle("is-active", btn.dataset.quick === key);
+  });
+}
+
+function updateWorkspacePills() {
+  const provider = data.providers.find(p => p.current) || data.providers[0] || null;
+  const providerPill = $("#workspaceProviderPill");
+  const modePill = $("#workspaceModePill");
+  if (providerPill) providerPill.textContent = provider ? `${provider.name}${provider.model ? ` / ${provider.model}` : ""}` : "未配置 Provider";
+  if (modePill) modePill.textContent = state.permissionMode || "auto";
+}
+
 export function applyBootstrap(payload) {
   if (!payload?.ok) {
     const message = payload?.error || "启动数据加载失败";
@@ -55,6 +69,7 @@ export function applyBootstrap(payload) {
   if (Array.isArray(d.runners)) data.runners = d.runners;
   delete data.loadErrors.bootstrap;
   updateFooter();
+  updateWorkspacePills();
   populateIdentitiesSubmenu();
   populateModelDropdown();
   renderProjects();
@@ -115,6 +130,7 @@ export async function boot() {
   const contextStack = $("#contextStack");
 
   if (state.contextOpen === undefined) state.contextOpen = true;
+  if (typeof window !== "undefined" && window.innerWidth <= 700) state.sidebarOpen = false;
   sidebar?.classList.toggle("is-collapsed", !state.sidebarOpen);
   contextStack?.classList.toggle("is-collapsed", !state.contextOpen);
   setPerm(state.permissionMode || "auto");
@@ -122,6 +138,7 @@ export async function boot() {
   renderConvs();
   renderMessages();
   updateFooter();
+  updateWorkspacePills();
   autosize();
 
   // Wave 1: Critical path
@@ -148,6 +165,7 @@ export async function boot() {
   renderProjects();
   renderConvs();
   updateFooter();
+  updateWorkspacePills();
   populateModelDropdown();
   populateIdentitiesSubmenu();
   initialLoadDone = true;
@@ -310,9 +328,27 @@ export function initApp() {
 
   // Quick actions
   $("#pluginsBtn")?.addEventListener("click", async () => { await loadPlugins(); openSettings("plugins"); });
-  $("#teamsBtn")?.addEventListener("click", openTeamsBuilder);
+  $("#teamsBtn")?.addEventListener("click", () => { setQuickNavActive("teams"); openTeamsBuilder(); });
   $("#helpBtn")?.addEventListener("click", () => { closeAllDropdowns(); openHelp(); });
   $("#refreshIndexBtn")?.addEventListener("click", () => throttledRefresh(true));
+
+  document.querySelectorAll(".side-nav-btn[data-quick]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const key = btn.dataset.quick || "chat";
+      setQuickNavActive(key);
+      if (key === "chat") {
+        settingsPage?.classList.remove("is-open");
+        teamsPage?.classList.remove("is-open");
+        $("#promptInput")?.focus();
+      } else if (key === "teams") {
+        openTeamsBuilder();
+      } else if (key === "tasks") {
+        openSettings("tasks");
+      } else if (key === "providers") {
+        openSettings("providers");
+      }
+    });
+  });
 
   // Add folder button
   $("#addFolderBtn")?.addEventListener("click", async () => {
@@ -336,6 +372,7 @@ export function initApp() {
     save();
     renderProjects();
     updateFooter();
+    updateWorkspacePills();
     toast(`已选择项目：${basename(folder)}`, "success");
   });
 
