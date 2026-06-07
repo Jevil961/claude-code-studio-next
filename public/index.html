@@ -169,6 +169,28 @@
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                   </button>
                   <div class="add-menu" id="addMenu">
+                    <div class="add-menu-head">
+                      <b>添加到任务</b>
+                      <span>上下文、身份和常用动作</span>
+                    </div>
+                    <div class="add-quick-grid" aria-label="常用操作">
+                      <button class="add-quick-action" data-action="addFile" type="button">
+                        <span>文件</span>
+                        <b>附加文件</b>
+                      </button>
+                      <button class="add-quick-action" data-action="pasteClipboard" type="button">
+                        <span>剪贴板</span>
+                        <b>粘贴文本</b>
+                      </button>
+                      <button class="add-quick-action" data-action="insertReviewPrompt" type="button">
+                        <span>审查</span>
+                        <b>代码审查</b>
+                      </button>
+                      <button class="add-quick-action" data-action="openTeams" type="button">
+                        <span>流程</span>
+                        <b>Teams</b>
+                      </button>
+                    </div>
                     <div class="add-menu-item" data-sub="identities">
                       <span class="ami-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.2"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" stroke-width="1.2"/></svg></span>
                       <span class="ami-label">身份</span>
@@ -182,6 +204,9 @@
                       <div class="add-submenu" id="subContext">
                         <button class="add-sub-item" data-action="addFolder" type="button">添加目录</button>
                         <button class="add-sub-item" data-action="addFile" type="button">添加文件</button>
+                        <button class="add-sub-item" data-action="pasteClipboard" type="button">粘贴剪贴板文本</button>
+                        <button class="add-sub-item" data-action="insertPlanPrompt" type="button">插入计划模板</button>
+                        <button class="add-sub-item" data-action="insertReviewPrompt" type="button">插入审查模板</button>
                       </div>
                     </div>
                     <div class="add-menu-item" data-sub="tools">
@@ -191,6 +216,9 @@
                       <div class="add-submenu" id="subTools">
                         <button class="add-sub-item" data-action="openSkills" type="button">Skills 管理</button>
                         <button class="add-sub-item" data-action="openMcp" type="button">MCP 服务</button>
+                        <button class="add-sub-item" data-action="openProviders" type="button">Provider 设置</button>
+                        <button class="add-sub-item" data-action="openTeams" type="button">Teams 工作流</button>
+                        <button class="add-sub-item" data-action="exportConversation" type="button">导出当前对话</button>
                         <button class="add-sub-item" data-action="syncSkills" type="button">同步到 Claude</button>
                       </div>
                     </div>

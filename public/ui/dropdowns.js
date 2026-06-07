@@ -13,7 +13,10 @@ export function configure(d) { deps = d; }
 export function closeAllDropdowns() {
   document.querySelectorAll(".float-dropdown.is-open").forEach(d => d.classList.remove("is-open"));
   const addMenu = $("#addMenu");
-  if (addMenu) addMenu.style.display = "none";
+  if (addMenu) {
+    addMenu.style.display = "none";
+    addMenu.classList.remove("is-open");
+  }
 }
 
 export function showAddMenu() {
@@ -22,9 +25,10 @@ export function showAddMenu() {
   const addBtn = $("#addBtn");
   if (!addMenu || !addBtn) return;
   const rect = addBtn.getBoundingClientRect();
-  addMenu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 476))}px`;
+  addMenu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 560))}px`;
   addMenu.style.bottom = `${window.innerHeight - rect.top + 8}px`;
   addMenu.style.display = "block";
+  addMenu.classList.add("is-open");
   setActiveAddCategory(addMenu.querySelector(".add-menu-item.is-open") || addMenu.querySelector(".add-menu-item[data-sub]"));
 }
 
@@ -34,7 +38,16 @@ export function hideAddMenu(delay = 300) {
   if (!addMenu) return;
   addMenuTimer = setTimeout(() => {
     addMenu.style.display = "none";
+    addMenu.classList.remove("is-open");
   }, delay);
+}
+
+function closeAddMenu() {
+  clearTimeout(addMenuTimer);
+  const addMenu = $("#addMenu");
+  if (!addMenu) return;
+  addMenu.style.display = "none";
+  addMenu.classList.remove("is-open");
 }
 
 export function setActiveAddCategory(item) {
@@ -153,14 +166,13 @@ export function initDropdowns() {
   $("#addBtn")?.addEventListener("click", (e) => {
     e.stopPropagation();
     if (addMenu?.style.display === "block") {
-      addMenu.style.display = "none";
+      closeAddMenu();
     } else {
       showAddMenu();
     }
   });
 
-  // Mouse enter/leave for add menu
-  addMenuWrap?.addEventListener("mouseenter", showAddMenu);
+  // Keep the menu open while the pointer is inside it, but open only by click to avoid accidental popups.
   addMenuWrap?.addEventListener("mouseleave", () => hideAddMenu(300));
   addMenu?.addEventListener("mouseenter", () => clearTimeout(addMenuTimer));
   addMenu?.addEventListener("mouseleave", () => hideAddMenu(200));
@@ -175,32 +187,9 @@ export function initDropdowns() {
   });
 
   // Context actions
-  document.querySelectorAll(".add-sub-item[data-action]").forEach(btn => {
+  document.querySelectorAll(".add-sub-item[data-action], .add-quick-action[data-action]").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const action = btn.dataset.action;
-      const bridge = getBridge();
-      if (action === "addFolder") {
-        const folder = await bridge?.chooseFolder?.();
-        if (folder) {
-          state.cwd = folder;
-          const existingPaths = new Set(data.projects.map(p => (p.path || "").toLowerCase()));
-          if (!existingPaths.has(folder.toLowerCase())) {
-            const proj = { id: folder, name: basename(folder), path: folder, updatedAt: Math.floor(Date.now() / 1000), sessions: [], sessionCount: 0 };
-            data.projects.unshift(proj);
-            state.customProjects = state.customProjects || [];
-            if (!state.customProjects.some(p => (p.path || "").toLowerCase() === folder.toLowerCase())) {
-              state.customProjects.push(proj);
-            }
-          }
-          state.selectedProject = folder;
-          save(); deps.renderProjects?.(); deps.updateFooter?.(); toast(`已添加：${basename(folder)}`, "success");
-        }
-      } else if (action === "addFile") {
-        const file = await bridge?.chooseFile?.();
-        if (file) { deps.addAttachments?.([file]); toast(`已添加：${basename(file)}`, "success"); }
-      } else if (action === "openSkills") { deps.openSettings?.("skills"); }
-      else if (action === "openMcp") { deps.openSettings?.("mcp"); }
-      else if (action === "syncSkills") { await deps.syncActiveIdentity?.(); }
+      await handleAddAction(btn.dataset.action);
     });
   });
 
@@ -242,4 +231,85 @@ export function initDropdowns() {
     dd.style.bottom = (window.innerHeight - rect.top + 6) + "px";
     dd.classList.add("is-open");
   });
+}
+
+async function handleAddAction(action) {
+  const bridge = getBridge();
+  if (action === "addFolder") {
+    const folder = await bridge?.chooseFolder?.();
+    if (!folder) return;
+    state.cwd = folder;
+    const existingPaths = new Set(data.projects.map(p => (p.path || "").toLowerCase()));
+    if (!existingPaths.has(folder.toLowerCase())) {
+      const proj = { id: folder, name: basename(folder), path: folder, updatedAt: Math.floor(Date.now() / 1000), sessions: [], sessionCount: 0 };
+      data.projects.unshift(proj);
+      state.customProjects = state.customProjects || [];
+      if (!state.customProjects.some(p => (p.path || "").toLowerCase() === folder.toLowerCase())) {
+        state.customProjects.push(proj);
+      }
+    }
+    state.selectedProject = folder;
+    save();
+    deps.renderProjects?.();
+    deps.updateFooter?.();
+    closeAddMenu();
+    toast(`已添加：${basename(folder)}`, "success");
+  } else if (action === "addFile") {
+    const file = await bridge?.chooseFile?.();
+    if (!file) return;
+    deps.addAttachments?.([file]);
+    closeAddMenu();
+    toast(`已添加：${basename(file)}`, "success");
+  } else if (action === "pasteClipboard") {
+    const text = await readClipboardText();
+    if (!text) return;
+    insertPromptText(text);
+    closeAddMenu();
+    toast("已粘贴到输入框", "success");
+  } else if (action === "insertPlanPrompt") {
+    insertPromptText("请根据当前需求拆分实现计划，列出关键步骤、风险点和验收标准。先不要修改代码。");
+    closeAddMenu();
+  } else if (action === "insertReviewPrompt") {
+    insertPromptText("请以代码审查方式检查当前改动，按严重程度列出 bug、行为回归、风险和缺失测试。");
+    closeAddMenu();
+  } else if (action === "openSkills") {
+    closeAddMenu();
+    deps.openSettings?.("skills");
+  } else if (action === "openMcp") {
+    closeAddMenu();
+    deps.openSettings?.("mcp");
+  } else if (action === "openProviders") {
+    closeAddMenu();
+    deps.openSettings?.("providers");
+  } else if (action === "openTeams") {
+    closeAddMenu();
+    deps.openTeamsBuilder?.();
+  } else if (action === "exportConversation") {
+    closeAddMenu();
+    deps.exportConversation?.();
+  } else if (action === "syncSkills") {
+    closeAddMenu();
+    await deps.syncActiveIdentity?.();
+  }
+}
+
+function insertPromptText(text) {
+  const input = $("#promptInput");
+  if (!input || !text) return;
+  const current = input.value || "";
+  const prefix = current.trim() ? `${current.trimEnd()}\n\n` : "";
+  input.value = `${prefix}${text.trim()}`;
+  input.focus();
+  input.dispatchEvent(new Event("input"));
+}
+
+async function readClipboardText() {
+  try {
+    const text = await navigator.clipboard?.readText?.();
+    if (text?.trim()) return text;
+  } catch {
+    // Fall through to the user-facing toast below.
+  }
+  toast("无法读取剪贴板，请手动粘贴文本", "warning");
+  return "";
 }
