@@ -290,6 +290,43 @@ test("teams settings renders user-defined members and workflow steps", async () 
   assert.match(html, /Review/);
 });
 
+test("teams canvas can pan from blank content layers but not nodes", async () => {
+  const { canPanTeamCanvasTarget } = await import("../public/ui/settings/teams.js");
+  const canvas = { contains: target => target?.insideCanvas === true };
+  const blankContent = { insideCanvas: true, closest: () => null };
+  const blankSvg = { insideCanvas: true, closest: () => null };
+  const nodeCard = { insideCanvas: true, closest: selector => selector.includes(".team-node-card") ? {} : null };
+  const outside = { insideCanvas: false, closest: () => null };
+
+  assert.equal(canPanTeamCanvasTarget(canvas, canvas), true);
+  assert.equal(canPanTeamCanvasTarget(blankContent, canvas), true);
+  assert.equal(canPanTeamCanvasTarget(blankSvg, canvas), true);
+  assert.equal(canPanTeamCanvasTarget(nodeCard, canvas), false);
+  assert.equal(canPanTeamCanvasTarget(outside, canvas), false);
+});
+
+test("teams workflow edge labels are offset to avoid overlapping routes", async () => {
+  const { layoutWorkflowEdgesForRender } = await import("../public/ui/settings/teams.js");
+  const team = {
+    workflow: [
+      { id: "pm", x: 100, y: 120 },
+      { id: "dev", x: 420, y: 120 },
+      { id: "qa", x: 420, y: 180 },
+    ],
+    workflowEdges: [
+      { id: "a", from: "pm", to: "dev", condition: "yes" },
+      { id: "b", from: "dev", to: "pm", condition: "no" },
+      { id: "c", from: "pm", to: "qa", condition: "revise" },
+    ],
+  };
+
+  const layouts = layoutWorkflowEdgesForRender(team);
+  assert.equal(layouts.length, 3);
+  const labels = layouts.map(item => `${Math.round(item.labelX)},${Math.round(item.labelY)}`);
+  assert.equal(new Set(labels).size, labels.length);
+  assert.notEqual(Math.round(layouts[0].labelY), Math.round(layouts[1].labelY));
+});
+
 test("opening the standalone teams builder refreshes teams before rendering", async () => {
   installFakeDom();
   const settings = await import("../public/ui/settings/index.js");

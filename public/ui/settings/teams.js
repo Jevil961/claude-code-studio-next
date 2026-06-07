@@ -50,6 +50,63 @@ function conditionLabel(condition = "default") {
   }[condition] || condition;
 }
 
+export function canPanTeamCanvasTarget(target, canvas) {
+  if (!target || !canvas) return false;
+  if (target.closest?.(".team-node-card, .team-zoom-bar, button, input, textarea, select, [draggable='true']")) return false;
+  return target === canvas || Boolean(canvas.contains?.(target));
+}
+
+export function layoutWorkflowEdgesForRender(team, edges = workflowEdges(team)) {
+  const valid = edges
+    .map(edge => ({ edge, from: stepById(team, edge.from), to: stepById(team, edge.to) }))
+    .filter(item => item.from && item.to);
+  const groups = new Map();
+  for (const item of valid) {
+    const pairKey = [item.edge.from, item.edge.to].sort().join("<>");
+    if (!groups.has(pairKey)) groups.set(pairKey, []);
+    groups.get(pairKey).push(item.edge.id || `${item.edge.from}->${item.edge.to}:${item.edge.condition || "default"}`);
+  }
+  const usedLabels = [];
+  return valid.map(item => {
+    const x1 = (item.from.x || 0) + NODE_W;
+    const y1 = (item.from.y || 0) + NODE_H / 2;
+    const x2 = item.to.x || 0;
+    const y2 = (item.to.y || 0) + NODE_H / 2;
+    const pairKey = [item.edge.from, item.edge.to].sort().join("<>");
+    const group = groups.get(pairKey) || [];
+    const groupIndex = Math.max(0, group.indexOf(item.edge.id || `${item.edge.from}->${item.edge.to}:${item.edge.condition || "default"}`));
+    const groupOffset = (groupIndex - (group.length - 1) / 2) * 30;
+    const len = Math.max(1, Math.hypot(x2 - x1, y2 - y1));
+    const nx = -(y2 - y1) / len;
+    const ny = (x2 - x1) / len;
+    const offsetX = nx * groupOffset;
+    const offsetY = ny * groupOffset;
+    let labelX = (x1 + x2) / 2 + offsetX;
+    let labelY = (y1 + y2) / 2 - 12 + offsetY;
+    let collisionStep = 0;
+    while (usedLabels.some(pos => Math.abs(pos.x - labelX) < 48 && Math.abs(pos.y - labelY) < 24) && collisionStep < 6) {
+      collisionStep += 1;
+      labelY += 20;
+      labelX += collisionStep % 2 ? 16 : -16;
+    }
+    usedLabels.push({ x: labelX, y: labelY });
+    return {
+      edge: item.edge,
+      from: item.from,
+      to: item.to,
+      x1,
+      y1,
+      x2,
+      y2,
+      cp: Math.max(50, Math.abs(x2 - x1) * 0.5),
+      offsetX,
+      offsetY,
+      labelX,
+      labelY,
+    };
+  });
+}
+
 function conditionOptions(value = "default") {
   return ["default", "yes", "no", "revise", "pass", "approve", "reject"].map(condition => ({
     value: condition,
@@ -1519,7 +1576,7 @@ function renderMindmap(team, deps) {
     else addNodeFromComponent(team, type, position, renderSettingsTab);
   });
   canvas.addEventListener("pointerdown", event => {
-    if (event.target !== canvas && event.target !== svg) return;
+    if (event.button !== 0 || !canPanTeamCanvasTarget(event.target, canvas)) return;
     const startX = event.clientX;
     const startY = event.clientY;
     const originLeft = canvas.scrollLeft;
@@ -1554,6 +1611,7 @@ function renderMindmap(team, deps) {
 
   function drawEdges() {
     const edges = workflowEdges(team);
+    const layouts = layoutWorkflowEdgesForRender(team, edges);
     let html = defs.outerHTML;
     // Draw flow animation dots for running edges
     const activeEdges = [];
@@ -1564,18 +1622,9 @@ function renderMindmap(team, deps) {
         }
       }
     }
-    for (const edge of edges) {
-      const from = stepById(team, edge.from);
-      const to = stepById(team, edge.to);
-      if (!from || !to) continue;
-      const x1 = (from.x || 0) + NODE_W;
-      const y1 = (from.y || 0) + NODE_H / 2;
-      const x2 = to.x || 0;
-      const y2 = (to.y || 0) + NODE_H / 2;
-      const dx = Math.abs(x2 - x1);
-      const dy = Math.abs(y2 - y1);
-      const cp = Math.max(50, dx * 0.5);
-      const d = `M ${x1} ${y1} C ${x1 + cp} ${y1}, ${x2 - cp} ${y2}, ${x2} ${y2}`;
+    for (const layout of layouts) {
+      const { edge, x1, y1, x2, y2, cp, offsetX, offsetY, labelX, labelY } = layout;
+      const d = `M ${x1} ${y1} C ${x1 + cp + offsetX} ${y1 + offsetY}, ${x2 - cp + offsetX} ${y2 + offsetY}, ${x2} ${y2}`;
       const es = edgeStyle(edge.condition);
       const isActive = activeEdges.some(e => e.id === edge.id);
       const strokeOpacity = isActive ? "1" : "0.6";
@@ -1584,12 +1633,13 @@ function renderMindmap(team, deps) {
       // Label
       const label = conditionLabel(edge.condition);
       if (label !== "默认") {
-        const lx = (x1 + x2) / 2;
-        const ly = (y1 + y2) / 2 - 12;
+        const lx = labelX;
+        const ly = labelY;
         const labelBg = edge.condition === "revise" || edge.condition === "reject" || edge.condition === "no" ? "rgba(239,68,68,0.12)" : edge.condition === "pass" || edge.condition === "approve" || edge.condition === "yes" ? "rgba(16,185,129,0.12)" : "rgba(100,116,139,0.12)";
         const labelColor = es.color;
-        html += `<rect x="${lx - 18}" y="${ly - 8}" width="36" height="16" rx="3" fill="${labelBg}" />`;
-        html += `<text x="${lx}" y="${ly + 4}" font-size="10" fill="${labelColor}" text-anchor="middle" font-weight="500">${label}</text>`;
+        const labelWidth = Math.max(36, label.length * 12 + 14);
+        html += `<rect x="${lx - labelWidth / 2}" y="${ly - 9}" width="${labelWidth}" height="18" rx="4" fill="${labelBg}" stroke="rgba(15,18,24,0.92)" stroke-width="2" />`;
+        html += `<text x="${lx}" y="${ly + 4}" font-size="10" fill="${labelColor}" text-anchor="middle" font-weight="600">${escapeHtml(label)}</text>`;
       }
       // Flow dots for active edges
       if (isActive) {
