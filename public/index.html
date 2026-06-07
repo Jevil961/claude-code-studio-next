@@ -3,17 +3,16 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Claude Code Studio</title>
+    <title>Claude Code Studio Next</title>
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
     <a href="#main" class="skip-link">跳转到主要内容</a>
     <div class="toast-box" id="toastBox" role="alert" aria-live="polite"></div>
 
-    <!-- Claude Setup Banner -->
     <div class="version-banner is-hidden" id="setupBanner">
       <div class="version-banner-body">
-        <span class="version-banner-icon" id="setupBannerIcon">📦</span>
+        <span class="version-banner-icon" id="setupBannerIcon">CC</span>
         <div style="flex:1;">
           <b id="setupBannerTitle">未检测到 Claude Code</b>
           <span id="setupBannerMsg">正在获取可用版本...</span>
@@ -27,31 +26,31 @@
       </div>
     </div>
 
-    <!-- Top Bar -->
     <header class="topbar" role="banner">
       <button class="topbar-btn" id="sidebarToggle" type="button" title="侧边栏" data-tip="切换侧边栏" aria-label="切换侧边栏">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M6 2v12" stroke="currentColor" stroke-width="1.5"/></svg>
       </button>
-      <button class="topbar-btn" id="contextToggle" type="button" title="折叠右侧栏" data-tip="切换右侧面板" aria-label="切换右侧面板">
+      <button class="topbar-btn" id="contextToggle" type="button" title="右侧面板" data-tip="切换右侧面板" aria-label="切换右侧面板">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M10 2v12" stroke="currentColor" stroke-width="1.5"/></svg>
       </button>
-      <button class="topbar-brand" id="brandMenuBtn" type="button" title="菜单" data-tip="菜单" aria-haspopup="true" aria-expanded="false">
+      <button class="topbar-brand" id="brandMenuBtn" type="button" title="主菜单" data-tip="主菜单" aria-haspopup="true" aria-expanded="false">
         <svg class="logo-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
           <rect x="2.5" y="3" width="15" height="14" rx="3.2" stroke="currentColor" stroke-width="1.45"/>
           <path d="M6.4 8.2 4.8 10l1.6 1.8M13.6 8.2l1.6 1.8-1.6 1.8M11.2 6.8 8.8 13.2" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <span class="logo-text">Claude Code Studio</span>
+        <span class="logo-text">Claude Code Studio Next</span>
         <svg class="brand-chevron" width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
-      <div class="float-dropdown" id="brandDropdown" style="min-width:160px;" role="menu" aria-label="主菜单">
+      <div class="float-dropdown" id="brandDropdown" style="min-width:176px;" role="menu" aria-label="主菜单">
         <button class="model-option" data-tab="providers" type="button" role="menuitem">Provider 管理</button>
+        <button class="model-option" data-tab="identities" type="button" role="menuitem">身份与协作</button>
         <button class="model-option" data-tab="teams" type="button" role="menuitem">Teams 工作流</button>
         <button class="model-option" data-tab="tasks" type="button" role="menuitem">Agent Tasks</button>
-        <button class="model-option" data-tab="identities" type="button" role="menuitem">身份与协作</button>
+        <div class="menu-separator"></div>
         <button class="model-option" data-tab="skills" type="button" role="menuitem">Skills 管理</button>
         <button class="model-option" data-tab="mcp" type="button" role="menuitem">MCP 服务</button>
         <button class="model-option" data-tab="plugins" type="button" role="menuitem">插件</button>
-        <div style="height:1px;background:var(--td-border-level-2-color);margin:3px 6px;"></div>
+        <div class="menu-separator"></div>
         <button class="model-option" data-tab="usage" type="button" role="menuitem">用量统计</button>
         <button class="model-option" data-tab="diagnostics" type="button" role="menuitem">诊断</button>
         <button class="model-option" data-tab="general" type="button" role="menuitem">通用设置</button>
@@ -70,7 +69,7 @@
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 2h4v3a1 1 0 001 1h3v4h-3a1 1 0 00-1 1v3H6v-3a1 1 0 00-1-1H2V6h3a1 1 0 001-1V2z" stroke="currentColor" stroke-width="1.3"/></svg>
           <span>插件</span>
         </button>
-        <button class="topbar-act" id="teamsBtn" type="button" title="Teams 工作流">
+        <button class="topbar-act topbar-act-primary" id="teamsBtn" type="button" title="Teams 工作流">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="5" cy="4" r="2" stroke="currentColor" stroke-width="1.3"/><circle cx="11" cy="4" r="2" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="11" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M5.8 5.8l2 4.4M10.2 5.8l-2 4.4" stroke="currentColor" stroke-width="1.3"/></svg>
           <span>Teams</span>
         </button>
@@ -89,7 +88,6 @@
     </header>
 
     <div class="shell">
-      <!-- Sidebar -->
       <aside class="sidebar" id="sidebar" role="navigation" aria-label="项目和对话导航">
         <div class="sidebar-head">
           <span class="sidebar-title">项目</span>
@@ -108,7 +106,7 @@
         </div>
         <div class="conv-filter-bar" id="convFilterBar">
           <button class="conv-filter-btn is-active" data-filter="all" type="button">全部</button>
-          <button class="conv-filter-btn" data-filter="pinned" type="button">已固定</button>
+          <button class="conv-filter-btn" data-filter="pinned" type="button">置顶</button>
           <button class="conv-filter-btn" data-filter="recent" type="button">今天</button>
         </div>
         <div class="conv-list" id="convList" style="flex:1;"></div>
@@ -118,10 +116,8 @@
         </div>
       </aside>
 
-      <!-- Main Chat -->
       <main class="main" id="main" role="main">
         <div class="transcript" id="transcript" role="log" aria-live="polite" aria-label="对话内容"></div>
-
         <form class="composer-wrap" id="composer">
           <div class="plan-bar is-hidden" id="planBar">
             <span>计划已生成</span>
@@ -131,7 +127,7 @@
           </div>
           <div class="composer">
             <div class="composer-top">
-              <textarea id="promptInput" rows="1" placeholder="输入任务... (/ 触发快捷指令)" aria-label="输入任务"></textarea>
+              <textarea id="promptInput" rows="1" placeholder="输入任务... (/ 触发快捷命令)" aria-label="输入任务"></textarea>
               <div class="attachment-tray" id="attachmentTray"></div>
             </div>
             <div class="composer-foot">
@@ -184,7 +180,6 @@
             </div>
           </div>
         </form>
-
         <footer class="statusbar">
           <span id="cwdState">未选择项目</span>
           <span id="branchState"></span>
@@ -201,7 +196,6 @@
           </div>
           <div class="ctx-kv" id="contextOverview"></div>
         </section>
-
         <section class="ctx-section ctx-section-grow">
           <div class="ctx-head">
             <span>运行时间线</span>
@@ -209,7 +203,6 @@
           </div>
           <div class="run-timeline" id="runTimeline"></div>
         </section>
-
         <section class="ctx-section">
           <div class="ctx-head">
             <span>材料与变更</span>
@@ -220,23 +213,11 @@
       </aside>
     </div>
 
-    <!-- Floating dropdowns (outside composer to avoid clipping) -->
-    <div class="float-dropdown" id="modelDropdown" style="min-width:180px;max-width:240px;">
-      <div id="modelDropdownBody"></div>
-    </div>
+    <div class="float-dropdown" id="modelDropdown" style="min-width:180px;max-width:240px;"><div id="modelDropdownBody"></div></div>
     <div class="float-dropdown" id="permDropdown" style="min-width:150px;">
-      <button class="perm-option is-active" data-mode="auto" type="button">
-        <span class="perm-option-name">Auto</span>
-        <span class="perm-option-desc">低风险自动，高风险需确认</span>
-      </button>
-      <button class="perm-option" data-mode="plan" type="button">
-        <span class="perm-option-name">Plan</span>
-        <span class="perm-option-desc">只生成计划，不执行</span>
-      </button>
-      <button class="perm-option" data-mode="bypass" type="button">
-        <span class="perm-option-name">Bypass</span>
-        <span class="perm-option-desc">跳过所有确认</span>
-      </button>
+      <button class="perm-option is-active" data-mode="auto" type="button"><span class="perm-option-name">Auto</span><span class="perm-option-desc">低风险自动执行，高风险需要确认</span></button>
+      <button class="perm-option" data-mode="plan" type="button"><span class="perm-option-name">Plan</span><span class="perm-option-desc">只生成计划，不执行改动</span></button>
+      <button class="perm-option" data-mode="bypass" type="button"><span class="perm-option-name">Bypass</span><span class="perm-option-desc">跳过所有确认</span></button>
     </div>
 
     <div class="search-panel" id="searchPanel" role="search" aria-label="全局搜索">
@@ -249,7 +230,6 @@
       <div class="search-results" id="searchResults"></div>
     </div>
 
-    <!-- Command Palette -->
     <div class="cmd-palette-overlay" id="cmdPaletteOverlay">
       <div class="cmd-palette">
         <input class="cmd-palette-input" id="cmdPaletteInput" type="text" placeholder="输入命令或搜索..." aria-label="命令面板">
@@ -257,22 +237,25 @@
       </div>
     </div>
 
-    <!-- Settings Page -->
     <div class="settings-page" id="settingsPage" role="dialog" aria-modal="true" aria-label="设置">
       <div class="settings-head">
-        <button class="settings-back" id="settingsBack" type="button">
+        <button class="settings-back" id="settingsBack" type="button" aria-label="返回">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <span class="settings-title" id="settingsTitle">设置</span>
       </div>
       <div class="settings-tabs" id="settingsTabs" role="tablist">
+        <span class="stab-group">开始</span>
         <button class="stab is-active" data-tab="providers" type="button">Provider</button>
+        <button class="stab" data-tab="identities" type="button">身份</button>
+        <span class="stab-group">自动化</span>
         <button class="stab" data-tab="teams" type="button">Teams</button>
         <button class="stab" data-tab="tasks" type="button">Tasks</button>
-        <button class="stab" data-tab="identities" type="button">身份</button>
+        <span class="stab-group">工具</span>
         <button class="stab" data-tab="skills" type="button">Skills</button>
         <button class="stab" data-tab="mcp" type="button">MCP</button>
         <button class="stab" data-tab="plugins" type="button">插件</button>
+        <span class="stab-group">运维</span>
         <button class="stab" data-tab="runners" type="button">Runner</button>
         <button class="stab" data-tab="usage" type="button">用量</button>
         <button class="stab" data-tab="diagnostics" type="button">诊断</button>
@@ -281,21 +264,19 @@
       <div class="settings-body" id="settingsBody"></div>
     </div>
 
-    <!-- Teams Workflow Builder -->
     <div class="teams-page" id="teamsPage">
       <div class="teams-head">
-        <button class="settings-back" id="teamsBack" type="button">
+        <button class="settings-back" id="teamsBack" type="button" aria-label="返回">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <div>
           <div class="settings-title">Teams 工作流工作台</div>
-          <div class="teams-subtitle">拖拽组件、配置身份、连线条件，然后从右侧输入任务运行。</div>
+          <div class="teams-subtitle">拖拽身份和组件，配置节点与连线条件，然后从右侧输入任务运行。</div>
         </div>
       </div>
       <div class="teams-body is-teams-builder" id="teamsBuilderBody"></div>
     </div>
 
-    <!-- Modal -->
     <div class="modal-overlay" id="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <div class="modal-box" id="modalBox">
         <div class="modal-title" id="modalTitle"></div>
@@ -307,10 +288,8 @@
       </div>
     </div>
 
-    <!-- Context Menu -->
     <div class="float-dropdown" id="ctxMenu" style="min-width:120px;" role="menu" aria-label="上下文菜单"></div>
 
-    <!-- First-run wizard / Help -->
     <div class="wizard-overlay" id="wizardOverlay">
       <div class="wizard-box">
         <div class="wizard-head">
@@ -334,7 +313,6 @@
       </div>
     </div>
 
-    <!-- Confirm -->
     <div class="modal-overlay" id="confirmOverlay" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle">
       <div class="modal-box">
         <div class="modal-title" id="confirmTitle"></div>
@@ -346,7 +324,6 @@
       </div>
     </div>
 
-    <!-- Ask User (auto mode permission) -->
     <div class="modal-overlay" id="askOverlay" role="dialog" aria-modal="true" aria-labelledby="askTitle">
       <div class="modal-box">
         <div class="modal-title" id="askTitle">需要确认</div>
@@ -354,7 +331,6 @@
       </div>
     </div>
 
-    <!-- Templates -->
     <template id="tplConv">
       <button class="conv-item" type="button">
         <div class="conv-item-body">

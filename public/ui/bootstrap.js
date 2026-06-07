@@ -1,4 +1,4 @@
-import { data, save, state } from "./state.js";
+﻿import { data, save, state } from "./state.js";
 import { getBridge, safeBridge, runtimeAction } from "./bridge.js";
 import { $, basename, toast } from "./helpers.js";
 import { configure as configureDataLoader, loadProviders, loadSkills, loadSkillCategories, loadIdentities, loadTeams, loadAgentTasks, loadMcp, loadPlugins, loadAutomations, loadUsage, loadRunners, loadDiag, loadProjects, refreshProjectIndex, checkEnv, syncActiveIdentity, mergeCustomProjects, projectIndexState, setProjectIndexState, skillCategoriesLoaded, setSkillCategoriesLoaded, getLastRefresh, setLastRefresh, refreshSettingsIfOpen } from "./data-loader.js";
@@ -92,7 +92,7 @@ export function handleIdentityAnalysis(payload = {}) {
     warning: payload.warning || "",
   };
   if (payload.status === "fallback" && payload.warning) {
-    toast("Claude 分析未完成，已切换本地聚类", "info");
+    toast("Claude 分析未完成，已切换到本地聚类", "info");
   }
   if (payload.status === "done") {
     Promise.all([loadSkillCategories(), loadIdentities()]).then(() => {
@@ -181,7 +181,6 @@ export async function boot() {
         var missing2 = sr.data?.missing?.length || 0;
         if (copied2 > 0 || missing2 > 0) {
           var msg2 = "Skills 已同步 " + copied2 + " 个";
-          if (missing2 > 0) msg2 += ", " + missing2 + " 个缺失源文件";
           toast(msg2, missing2 > 0 ? "error" : "success");
         }
       }
@@ -204,26 +203,25 @@ export async function throttledRefresh(force = false) {
 async function showShortcutModal() {
   const { showModal } = await import("./modal.js");
   const shortcuts = [
-    ['Ctrl/⌘ + K', '命令面板'],
-    ['Ctrl/⌘ + N', '新建对话'],
-    ['Ctrl/⌘ + /', '搜索'],
-    ['Ctrl/⌘ + B', '切换侧边栏'],
-    ['Ctrl/⌘ + .', '切换右侧面板'],
-    ['Ctrl/⌘ + Shift + T', '切换主题'],
-    ['Ctrl/⌘ + Shift + D', '切换密度'],
-    ['Esc', '关闭面板 / 停止运行'],
-    ['↑ (输入框)', '上一条历史输入'],
-    ['↓ (输入框)', '下一条历史输入'],
-    ['/ (输入框)', '触发快捷指令'],
+    ["Ctrl/⌘ + K", "命令面板"],
+    ["Ctrl/⌘ + N", "新建对话"],
+    ["Ctrl/⌘ + /", "搜索"],
+    ["Ctrl/⌘ + B", "切换侧边栏"],
+    ["Ctrl/⌘ + .", "切换右侧面板"],
+    ["Ctrl/⌘ + Shift + T", "切换主题"],
+    ["Ctrl/⌘ + Shift + D", "切换密度"],
+    ["Esc", "关闭面板 / 停止运行"],
+    ["↑（输入框）", "上一条历史输入"],
+    ["↓（输入框）", "下一条历史输入"],
+    ["/（输入框）", "触发快捷命令"],
   ];
   const html = shortcuts.map(([key, desc]) =>
-    `<div class="shortcut-row"><span class="shortcut-desc">${desc}</span><span class="shortcut-keys">${key.split('+').map(k => `<kbd class="kbd">${k.trim()}</kbd>`).join('+')}</span></div>`
-  ).join('');
-  await showModal('键盘快捷键', []);
-  const fieldsEl = document.querySelector('#modalFields');
-  if (fieldsEl) { fieldsEl.innerHTML = `<div class="shortcut-list">${html}</div>`; }
+    `<div class="shortcut-row"><span class="shortcut-desc">${desc}</span><span class="shortcut-keys">${key.split("+").map(k => `<kbd class="kbd">${k.trim()}</kbd>`).join("+")}</span></div>`
+  ).join("");
+  await showModal("键盘快捷键", []);
+  const fieldsEl = document.querySelector("#modalFields");
+  if (fieldsEl) fieldsEl.innerHTML = `<div class="shortcut-list">${html}</div>`;
 }
-
 export function initApp() {
   const bridge = getBridge();
   const openWorkspaceWindow = async () => {
@@ -276,8 +274,18 @@ export function initApp() {
   });
 
   // Plan buttons
-  $("#approvePlanBtn")?.addEventListener("click", () => { if (!state.pendingPlanPrompt) return; $("#promptInput").value = `请按计划执行。\n\n原始任务：${state.pendingPlanPrompt}`; autosize(); state.pendingPlanPrompt = ""; save(); });
-  $("#revisePlanBtn")?.addEventListener("click", () => { if (!state.pendingPlanPrompt) return; $("#promptInput").value = `请修改计划：\n\n${state.pendingPlanPrompt}`; autosize(); });
+  $("#approvePlanBtn")?.addEventListener("click", () => {
+    if (!state.pendingPlanPrompt) return;
+    $("#promptInput").value = `请按计划执行。\n\n原始任务：${state.pendingPlanPrompt}`;
+    autosize();
+    state.pendingPlanPrompt = "";
+    save();
+  });
+  $("#revisePlanBtn")?.addEventListener("click", () => {
+    if (!state.pendingPlanPrompt) return;
+    $("#promptInput").value = `请修改计划：\n\n${state.pendingPlanPrompt}`;
+    autosize();
+  });
   $("#cancelPlanBtn")?.addEventListener("click", () => { state.pendingPlanPrompt = ""; save(); });
 
   // Run/stop button
@@ -368,7 +376,12 @@ export function initApp() {
     updateModelLabel,
     getAttachedFiles,
     recordReplayEvent,
-    friendlyProgress: (text) => String(text || "").replace(/启动中/g, "准备上下文").replace(/启动/g, "准备").replace(/复用 runner/gi, "继续处理").replace(/runner/gi, "工作进程").replace(/进程已退出/g, "已完成"),
+    friendlyProgress: (text) => String(text || "")
+      .replace(/启动中/g, "准备上下文")
+      .replace(/启动/g, "准备")
+      .replace(/复用 runner/gi, "继续处理")
+      .replace(/runner/gi, "工作进程")
+      .replace(/进程已退出/g, "已完成"),
   });
   configureMessages({
     getCurrentRunId,

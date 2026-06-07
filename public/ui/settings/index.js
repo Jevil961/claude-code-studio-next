@@ -12,7 +12,6 @@ import { renderUsageSettings } from "./usage.js";
 import { renderDiagSettings } from "./diagnostics.js";
 import { renderGeneralSettings } from "./general.js";
 
-// Dependency injection
 let deps = {};
 export function configure(d) { deps = d; }
 
@@ -20,6 +19,48 @@ export const settingsPage = $("#settingsPage");
 export const settingsBody = $("#settingsBody");
 export const teamsPage = $("#teamsPage");
 export const teamsBuilderBody = $("#teamsBuilderBody");
+
+const PANEL_TITLES = {
+  providers: "Provider 管理",
+  teams: "Teams 工作流",
+  tasks: "Agent Tasks",
+  identities: "身份与协作",
+  skills: "Skills 管理",
+  mcp: "MCP 服务",
+  plugins: "插件",
+  runners: "Runner 管理",
+  usage: "用量统计",
+  diagnostics: "诊断",
+  general: "通用设置",
+};
+
+const PANEL_GUIDES = {
+  providers: ["先把模型服务接好。添加 Base URL、API Key 和默认模型后，点击测试确认可用。", "添加 Provider"],
+  teams: ["用身份组成工作流。适合需求澄清、开发、测试、复核这类需要多轮交接的任务。", "打开工作台"],
+  tasks: ["把复杂工作拆到独立分支或 worktree 里执行，便于查看 diff、测试结果和提交链路。", "新建任务"],
+  identities: ["身份是一组规则和 Skills 的组合。你可以把项目经理、开发、测试、架构师做成不同工作角色。", "创建身份"],
+  skills: ["Skills 是可复用能力说明。导入、预览、分类后再同步到 Claude Code。", "同步预览"],
+  mcp: ["MCP 服务为 Claude 提供外部工具。添加后建议先校验配置，再启用并同步。", "添加 MCP"],
+  plugins: ["插件扩展应用能力。优先安装可信插件，避免导入来源不明的本地目录。", "安装插件"],
+  runners: ["Runner 管理当前 Claude Code 工作进程。任务卡住时可以在这里查看并停止进程。", "刷新"],
+  usage: ["查看模型调用规模。后续可扩展为趋势图、预算提醒和 Provider 成本对比。", "查看诊断"],
+  diagnostics: ["检查 Claude、项目、Skills、MCP、桥接和运行时状态。发布前建议先跑一遍。", "生成报告"],
+  general: ["配置主题、密度、默认路径、数据导入导出和应用级偏好。", "打开帮助"],
+};
+
+const GUIDE_TITLES = {
+  providers: "先配置模型服务",
+  teams: "用身份组成工作流",
+  tasks: "隔离任务与分支",
+  identities: "把能力组织成身份",
+  skills: "管理可复用能力",
+  mcp: "连接外部工具",
+  plugins: "安装扩展能力",
+  runners: "查看运行进程",
+  usage: "理解用量与成本",
+  diagnostics: "排查应用状态",
+  general: "应用级设置",
+};
 
 export function openSettings(tab) {
   teamsPage?.classList.remove("is-open");
@@ -48,8 +89,7 @@ export function renderSettingsTab() {
   $("#settingsTabs").querySelectorAll(".stab").forEach(b => b.classList.toggle("is-active", b.dataset.tab === state.panel));
   settingsBody.innerHTML = "";
   settingsBody.classList.toggle("is-teams-builder", state.panel === "teams");
-  const titles = { providers: "Provider 管理", teams: "Teams 工作流", tasks: "Agent Tasks", identities: "身份与协作", skills: "Skills 管理", mcp: "MCP 服务", plugins: "插件", runners: "Runner 管理", usage: "用量统计", diagnostics: "诊断", general: "通用设置" };
-  $("#settingsTitle").textContent = titles[state.panel] || "设置";
+  $("#settingsTitle").textContent = PANEL_TITLES[state.panel] || "设置";
 
   const panelDeps = { settingsBody, renderSettingsTab, ...deps };
   renderSettingsGuide(state.panel, settingsBody);
@@ -68,24 +108,12 @@ export function renderSettingsTab() {
 }
 
 function renderSettingsGuide(tab, body) {
-  const copy = {
-    providers: ["Provider 是模型服务配置。先添加 API 地址、密钥和默认模型，再点击测试确认可用。", "添加 Provider"],
-    teams: ["Teams 是可视化身份工作流。先定义身份，再把节点连成需求、开发、测试、审核的交接流程。", "打开工作台"],
-    tasks: ["Agent Tasks 用独立 branch/worktree 承载复杂任务，是后台 agent、diff、测试和提交链路的基础。", "新建任务"],
-    identities: ["身份是一组 Skills 能力集。切换身份会同步对应 Skills，让不同任务使用不同规则。", "自定义身份"],
-    skills: ["Skills 是可复用能力说明。先导入或扫描 Skills，再同步到 Claude Code。", "同步预览"],
-    mcp: ["MCP 服务为 Claude 提供外部工具。添加后建议先同步预览，再启用并同步。", "添加 MCP"],
-    plugins: ["插件扩展应用能力。可以从 marketplace 安装，也可以导入本地插件文件夹。", "安装插件"],
-    runners: ["Runner 管理当前 Claude Code 工作进程。任务卡住时可在这里查看并停止进程。", "刷新"],
-    usage: ["用量统计帮助你了解模型调用规模。后续会扩展趋势图、预算和导出。", "查看诊断"],
-    diagnostics: ["诊断页用于检查 Claude、项目、Skills、MCP 和运行时状态。", "生成报告"],
-    general: ["通用设置包含项目默认路径、运行策略和应用级偏好。", "打开帮助"],
-  }[tab];
+  const copy = PANEL_GUIDES[tab];
   if (!copy) return;
   const guide = document.createElement("div");
   guide.className = "settings-guide";
   guide.innerHTML = `
-    <b>${titlesForGuide(tab)}</b>
+    <b>${GUIDE_TITLES[tab] || "设置说明"}</b>
     <span>${copy[0]}</span>
     <div class="scard-actions"><button class="st-btn t-btn--link" data-guide-action="${tab}" type="button">${copy[1]}</button></div>
   `;
@@ -111,22 +139,6 @@ function renderSettingsGuide(tab, body) {
   });
 }
 
-function titlesForGuide(tab) {
-  return {
-    providers: "先配置模型服务",
-    teams: "用身份组成工作流",
-    tasks: "隔离任务与分支",
-    identities: "把 Skills 组织成身份",
-    skills: "管理可复用能力",
-    mcp: "连接外部工具",
-    plugins: "安装扩展能力",
-    runners: "查看运行进程",
-    usage: "理解用量与成本",
-    diagnostics: "排查应用状态",
-    general: "应用级设置",
-  }[tab] || "设置说明";
-}
-
 export function initSettings() {
   $("#settingsBack").addEventListener("click", () => settingsPage.classList.remove("is-open"));
   $("#teamsBack")?.addEventListener("click", () => teamsPage.classList.remove("is-open"));
@@ -137,16 +149,15 @@ export function initSettings() {
     save();
     renderSettingsTab();
   });
-  // Keyboard navigation for tabs
   $("#settingsTabs").addEventListener("keydown", e => {
-    const tabs = [...$("#settingsTabs").querySelectorAll('.stab[data-tab]')];
+    const tabs = [...$("#settingsTabs").querySelectorAll(".stab[data-tab]")];
     const curIdx = tabs.indexOf(document.activeElement);
-    if (e.key === 'ArrowRight') {
+    if (e.key === "ArrowRight") {
       e.preventDefault();
       const next = curIdx < tabs.length - 1 ? curIdx + 1 : 0;
       tabs[next].focus();
       tabs[next].click();
-    } else if (e.key === 'ArrowLeft') {
+    } else if (e.key === "ArrowLeft") {
       e.preventDefault();
       const prev = curIdx > 0 ? curIdx - 1 : tabs.length - 1;
       tabs[prev].focus();

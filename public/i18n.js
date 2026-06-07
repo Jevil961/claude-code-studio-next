@@ -3,9 +3,9 @@ export const text = {
   bridgeMissing: "Tauri 桥接未加载",
   bridgeTimeout: "读取超时",
   loading: "加载中...",
-  envLoading: "后台加载项目、Provider、Skills、MCP 和用量",
+  envLoading: "后台正在加载项目、Provider、Skills、MCP 和用量数据",
   claudeReady: "Claude Code 已就绪",
-  claudeMissing: "未找到 Claude",
+  claudeMissing: "未找到 Claude Code",
   bridgeFailed: "桥接失败",
   found: "已找到",
   normal: "正常",
@@ -14,7 +14,7 @@ export const text = {
 
   // Runner status
   runnerDisconnected: "未连接",
-  runnerStarting: "冷启动中",
+  runnerStarting: "正在启动",
   runnerReused: "复用已连接 runner",
   runnerBusy: "当前 runner 忙碌中",
   runnerStrict: "严格权限 runner",
@@ -29,7 +29,7 @@ export const text = {
   localWorkbench: "本地 Claude Code 工作台",
   readyToStart: "选择 Provider、项目和上下文后开始",
   noProject: "未选择项目",
-  noProjects: "暂无项目，请先用 Claude Code 创建或选择工作目录",
+  noProjects: "暂无项目，请先添加工作目录",
   noConversations: "选择项目后显示对话",
   emptyTitle: "从一个项目任务开始",
   emptyBody: "先选择左侧项目目录，再描述你希望 Claude Code 完成的工作。",
@@ -58,7 +58,7 @@ export const text = {
   usage: "用量",
   exportDone: "对话已导出",
   csvDone: "用量 CSV 已导出",
-  jsonlDone: "会话 JSONL 已导出",
+  jsonlDone: "对话 JSONL 已导出",
 
   // Session management
   sessionLoaded: "已加载历史对话",
@@ -105,7 +105,7 @@ export const text = {
   // Skill categories
   categoryAll: "全部",
   categoryCoding: "编程开发",
-  categorySecurityWeb: "Web安全",
+  categorySecurityWeb: "Web 安全",
   categorySecurityInjection: "注入攻击",
   categorySecurityAuth: "认证鉴权",
   categorySecurityBinary: "二进制/逆向",
@@ -115,7 +115,7 @@ export const text = {
   categorySecurityMobile: "移动安全",
   categorySecurityMisc: "综合安全",
   categoryOther: "其他",
-  noIdentities: "暂无身份，点击 AI 生成或手动创建",
+  noIdentities: "暂无身份，点击 AI 生成或手动创建。",
 
   // Accessibility
   skipToContent: "跳转到主要内容",
@@ -170,7 +170,7 @@ export const text = {
   errProviderUrl: "URL 必须以 http:// 或 https:// 开头",
   errFieldRequired: "不能为空",
   errRunTimeout: "模型准备或响应超时，请检查网络、Provider 和当前项目目录。",
-  errClaudeNotFound: "没有找到 Claude Code。请到诊断页点击[检测 Claude]，或手动设置 Claude 路径。",
+  errClaudeNotFound: "没有找到 Claude Code。请到诊断页点击检测 Claude，或手动设置 Claude 路径。",
   errPermission: "权限不足",
   errSessionMissing: "这个历史对话已经找不到了，已切换到新对话。",
 

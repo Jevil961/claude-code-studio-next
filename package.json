@@ -2,7 +2,7 @@
   "name": "claude-code-studio-next",
   "version": "1.0.0",
   "description": "Tauri desktop studio for Claude Code providers, skills, MCP, projects, and runners.",
-  "author": "Jevil",
+  "author": "Claude Code Studio Next",
   "license": "MIT",
   "private": true,
   "type": "module",
