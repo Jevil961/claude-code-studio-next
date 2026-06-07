@@ -31,8 +31,8 @@ export function renderMessages() {
         <div class="empty-state-icon" aria-hidden="true">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M7 8h10M7 12h7M7 16h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" stroke-width="1.7"/></svg>
         </div>
-        <b>把第一个工程任务交给 Claude Code</b>
-        <span>${hasProject ? "描述你要分析、修改或生成的目标；系统会把项目目录、身份和附件一起传给运行器。" : "先添加一个代码目录，再描述你希望 Claude Code 完成的工作。"}</span>
+        <b>开始一项工程任务</b>
+        <span>${hasProject ? "描述目标、约束和期望结果。当前项目、身份和附件会随任务一起传入运行器。" : "先添加代码目录，再描述要分析、修改或生成的内容。"}</span>
         <div class="empty-prompts" aria-label="任务示例">
           <button type="button" data-empty-prompt="请阅读当前项目并总结架构、启动方式和最重要的风险点。">项目体检</button>
           <button type="button" data-empty-prompt="请检查最近的代码改动，按严重程度列出 bug、风险和测试缺口。">代码审查</button>
@@ -43,7 +43,7 @@ export function renderMessages() {
         </div>
         <div class="empty-actions">
           ${hasProject ? "" : '<button class="st-btn t-btn--primary t-btn--sm" id="emptyAddProject" type="button">添加项目</button>'}
-          <button class="st-btn t-btn--primary t-btn--sm" id="emptyFocusPrompt" type="button">输入任务</button>
+          <button class="st-btn t-btn--primary t-btn--sm" id="emptyFocusPrompt" type="button">开始输入</button>
           <button class="st-btn t-btn--link" id="emptyOpenProviders" type="button">配置 Provider</button>
           <button class="st-btn t-btn--link" id="emptyOpenTeams" type="button">打开 Teams</button>
         </div>

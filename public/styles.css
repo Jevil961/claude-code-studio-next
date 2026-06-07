@@ -4516,3 +4516,376 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* Product UI refresh v2: quieter daily-work surface */
+
+:root {
+  --ccs-surface-0: #0a0c10;
+  --ccs-surface-1: #0f1217;
+  --ccs-surface-2: #151920;
+  --ccs-surface-3: #1b2028;
+  --ccs-line: rgba(199, 208, 222, 0.12);
+  --ccs-line-strong: rgba(199, 208, 222, 0.2);
+  --ccs-accent: #7aa2f7;
+  --ccs-green: #8bd8b0;
+  --td-brand-color: #7aa2f7;
+  --td-brand-color-hover: #8eb1ff;
+  --td-brand-color-focus: #5f86dc;
+  --td-brand-color-rgb: 122, 162, 247;
+  --td-brand-color-light: rgba(122, 162, 247, 0.1);
+  --td-text-color-primary: #e8edf5;
+  --td-text-color-secondary: #a6afbd;
+  --td-text-color-placeholder: #798291;
+  --td-text-color-disabled: #626b78;
+  --td-bg-color-page: var(--ccs-surface-0);
+  --td-bg-color-container: var(--ccs-surface-1);
+  --td-bg-color-container-hover: var(--ccs-surface-2);
+  --td-bg-color-container-active: var(--ccs-surface-3);
+  --td-border-level-1-color: var(--ccs-line-strong);
+  --td-border-level-2-color: var(--ccs-line);
+  --td-radius-default: 7px;
+  --td-radius-large: 8px;
+  --td-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.26);
+  --td-shadow-2: 0 8px 22px rgba(0, 0, 0, 0.28);
+  --td-shadow-3: 0 16px 44px rgba(0, 0, 0, 0.36);
+}
+
+body {
+  background: var(--ccs-surface-0);
+}
+
+.topbar {
+  height: 42px;
+  background: #0c0f14;
+  border-bottom-color: rgba(199, 208, 222, 0.1);
+  backdrop-filter: none;
+}
+
+.logo-icon {
+  color: #b8c3d6;
+}
+
+.logo-text {
+  color: #dce3ee;
+  font-weight: 650;
+}
+
+.topbar-btn,
+.topbar-act,
+.topbar-brand {
+  border-radius: 6px;
+}
+
+.topbar-act-primary {
+  color: #dce8ff;
+  background: rgba(122, 162, 247, 0.1);
+  border-color: rgba(122, 162, 247, 0.2);
+  box-shadow: none;
+}
+
+.topbar-act-primary:hover {
+  background: rgba(122, 162, 247, 0.15);
+}
+
+.shell {
+  height: calc(100vh - 42px);
+  background: var(--ccs-surface-0);
+}
+
+.main {
+  background: #0b0e13;
+}
+
+.sidebar,
+.context-stack {
+  background: #0c0f14;
+}
+
+.side-nav {
+  gap: 2px;
+  padding: 8px;
+  border-bottom: 1px solid var(--ccs-line);
+}
+
+.side-nav-btn {
+  height: 36px;
+  padding: 0 8px;
+  border-radius: 6px;
+}
+
+.side-nav-btn span {
+  width: 22px;
+  height: 20px;
+  background: transparent;
+  color: var(--td-text-color-disabled);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.side-nav-btn b {
+  font-size: 12px;
+  font-weight: 570;
+}
+
+.side-nav-btn em {
+  color: var(--td-text-color-disabled);
+  font-size: 10px;
+}
+
+.side-nav-btn:hover,
+.side-nav-btn.is-active {
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.side-nav-btn.is-active {
+  color: var(--td-text-color-primary);
+}
+
+.side-nav-btn.is-active span {
+  color: var(--ccs-accent);
+}
+
+.side-nav-btn.is-active::before {
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: rgba(122, 162, 247, 0.9);
+}
+
+.sidebar-head {
+  min-height: 34px;
+  padding: 7px 10px 5px;
+}
+
+.sidebar-title,
+.ctx-head span,
+.settings-title {
+  font-weight: 620;
+}
+
+.workspace-head {
+  min-height: 52px;
+  padding: 10px 18px;
+  background: #0d1016;
+}
+
+.workspace-title b {
+  font-size: 13px;
+  font-weight: 640;
+}
+
+.workspace-title span {
+  margin-top: 2px;
+  color: #808998;
+}
+
+.workspace-pills {
+  gap: 6px;
+}
+
+.workspace-pills span,
+.cfoot-pill,
+.mode-pill,
+.foot-info {
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035);
+  border-color: rgba(199, 208, 222, 0.1);
+}
+
+.transcript {
+  padding: 22px 24px;
+}
+
+.empty-state {
+  max-width: 680px;
+  margin: clamp(24px, 8vh, 76px) auto 0;
+  padding: 0;
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.empty-state-icon {
+  width: 34px;
+  height: 34px;
+  margin: 0 0 14px;
+  border-radius: 8px;
+  color: #aeb9c9;
+  background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(199, 208, 222, 0.12);
+}
+
+.empty-state-icon svg {
+  width: 19px;
+  height: 19px;
+}
+
+.empty-state b {
+  font-size: 19px;
+  font-weight: 650;
+  margin-bottom: 6px;
+}
+
+.empty-state > span {
+  display: block;
+  max-width: 560px;
+  color: #9aa4b3;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.empty-prompts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.empty-prompts button {
+  min-height: 38px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: #10141b;
+  border-color: rgba(199, 208, 222, 0.12);
+  color: #c0c8d3;
+  text-align: left;
+  box-shadow: none;
+}
+
+.empty-prompts button:hover {
+  background: #151a22;
+  border-color: rgba(199, 208, 222, 0.22);
+  color: var(--td-text-color-primary);
+}
+
+.empty-checklist {
+  justify-content: flex-start;
+  margin-top: 14px;
+  gap: 6px;
+}
+
+.empty-checklist span {
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035);
+  border-color: rgba(199, 208, 222, 0.1);
+  color: #8e98a7;
+}
+
+.empty-checklist span.is-done {
+  color: #a8d9bd;
+  border-color: rgba(139, 216, 176, 0.18);
+  background: rgba(139, 216, 176, 0.06);
+}
+
+.empty-actions {
+  justify-content: flex-start;
+  margin-top: 16px;
+}
+
+.composer-wrap {
+  padding: 8px 24px 14px;
+}
+
+.composer {
+  max-width: 860px;
+  border-radius: 10px;
+  background: #10141b;
+  border-color: rgba(199, 208, 222, 0.18);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+}
+
+.composer:focus-within,
+.team-chat-composer:focus-within {
+  border-color: rgba(122, 162, 247, 0.48);
+  box-shadow: 0 0 0 2px rgba(122, 162, 247, 0.12);
+}
+
+.composer-top {
+  padding: 9px 12px 0;
+}
+
+#promptInput {
+  min-height: 34px;
+}
+
+.composer-foot {
+  min-height: 34px;
+  padding: 5px 6px 6px;
+}
+
+.run-stop-btn,
+.add-btn,
+.model-btn,
+.cfoot-btn,
+.head-btn,
+.ctx-icon-btn {
+  border-radius: 6px;
+}
+
+.run-stop-btn.is-send {
+  background: #d7e2f4;
+  color: #11151c;
+  box-shadow: none;
+}
+
+.run-stop-btn.is-send:hover {
+  background: #ecf3ff;
+}
+
+.context-stack {
+  width: 292px;
+  min-width: 292px;
+  padding: 10px;
+}
+
+.ctx-section,
+.settings-guide,
+.scard,
+.team-sidebar,
+.team-panel-right,
+.team-topbar,
+.team-composer,
+.team-run-composer {
+  background: #0f1218;
+  border-color: rgba(199, 208, 222, 0.12);
+  box-shadow: none;
+}
+
+.settings-page,
+.teams-page {
+  inset: 42px 0 0 0;
+  background: #0b0e13;
+}
+
+.settings-tabs {
+  background: #0c0f14;
+}
+
+.stab {
+  height: 30px;
+  border-radius: 6px;
+}
+
+.stab.is-active {
+  color: #e8edf5;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 -1px 0 rgba(122, 162, 247, 0.7);
+}
+
+.team-workbench {
+  background: #0b0e13;
+}
+
+.team-node-card {
+  border-radius: 8px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+}
+
+@media (max-width: 900px) {
+  .empty-state {
+    margin-top: 20px;
+  }
+}
