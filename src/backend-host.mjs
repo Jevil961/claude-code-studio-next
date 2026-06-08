@@ -130,14 +130,15 @@ function sanitizePluginId(value) {
 const handlers = {
   bootstrapData: async () => {
     await ensureDb();
+    const safe = (fn, fallback) => { try { return fn(); } catch (e) { console.error("[bootstrap] module error:", e.message); return fallback; } };
     const projectsModule = await import("./db.js");
     return ok({
-      providers: providers.list(),
-      identities: identities.getIdentities(),
-      teams: teams.listTeams(),
-      agentTasks: agentTasks.listAgentTasks(),
-      projects: projectsModule.listProjects(),
-      runners: runner.listRunners(),
+      providers: safe(() => providers.list(), []),
+      identities: safe(() => identities.getIdentities(), []),
+      teams: safe(() => teams.listTeams(), []),
+      agentTasks: safe(() => agentTasks.listAgentTasks(), []),
+      projects: safe(() => projectsModule.listProjects(), []),
+      runners: safe(() => runner.listRunners(), []),
     });
   },
   listProviders: () => withDb(() => providers.list()),
@@ -398,6 +399,7 @@ async function call(method, args = []) {
 
 function cleanup() {
   try { runner.stopAll(); } catch {}
+  try { claudeSetup.cancelAllInstalls?.(); } catch {}
 }
 
 process.on("SIGTERM", () => { cleanup(); process.exit(0); });

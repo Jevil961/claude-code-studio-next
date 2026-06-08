@@ -16,6 +16,7 @@ let deps = {};
 export function configure(d) { deps = d; }
 
 export function getCurrentRunId() { return currentRunId; }
+export function clearCurrentRunId() { currentRunId = ""; }
 export function getAssistantBuffer() { return assistantBuffer; }
 export function getLiveThinking() { return liveThinking; }
 
@@ -101,7 +102,7 @@ export async function submitPrompt(e) {
   $("#promptInput").value = "";
   autosize();
   const finalPrompt = deps.promptWithAttachments?.(prompt) || prompt;
-  state.messages.push({ role: "user", content: finalPrompt }, { role: "assistant", content: "" });
+  state.messages.push({ role: "user", content: finalPrompt, originalPrompt: prompt }, { role: "assistant", content: "" });
   save();
   deps.renderMessages?.();
   assistantBuffer = "";
@@ -139,16 +140,22 @@ export async function submitPrompt(e) {
   deps.addTimeline?.("info", "提交任务", deps.compactPath?.(state.cwd));
 
   let r;
+  const runId = currentRunId;
   try {
-    r = await bridge.runClaude({
-      runId: currentRunId, prompt: finalPrompt, cwd: state.cwd, claudePath: state.claudePath,
+    const runPromise = bridge.runClaude({
+      runId, prompt: finalPrompt, cwd: state.cwd, claudePath: state.claudePath,
       mode: resumeSessionId ? "continue" : (state.mode === "continue" ? "normal" : state.mode),
       permissionMode: state.permissionMode || "auto",
       runnerStrategy: state.runnerStrategy || "seamless",
       providerId: p?.id || "", sessionId: resumeSessionId,
       clientSessionKey: resumeSessionId || state.clientSessionKey, extraArgs: [],
     });
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("runClaude timeout: backend did not respond in 30s")), 30000);
+    });
+    r = await Promise.race([runPromise, timeoutPromise]);
   } catch (error) {
+    if (bridge?.stopClaude && /timeout/i.test(String(error?.message))) bridge.stopClaude(runId);
     r = { ok: false, error: error?.message || String(error || "runClaude failed") };
   }
   if (!r.ok) {
@@ -161,6 +168,7 @@ export async function submitPrompt(e) {
       { label: "打开诊断", action: "diagnostics" },
       { label: "查看回放", action: "replay" },
     ]);
+    currentRunId = "";
     setRunning(false);
   } else {
     clearLastRecoveryActions();
@@ -201,16 +209,28 @@ export async function runStepAsync(prompt, { providerId, permissionMode, cwd } =
   setRunning(true);
   pushThink("正在准备项目上下文");
 
-  const r = await bridge.runClaude({
-    runId: currentRunId, prompt, cwd: cwd || state.cwd, claudePath: state.claudePath || "",
-    mode: "normal", permissionMode: permissionMode || state.permissionMode || "auto",
-    runnerStrategy: state.runnerStrategy || "seamless",
-    providerId: providerId || "", sessionId: "", clientSessionKey: state.clientSessionKey, extraArgs: [],
-  });
+  let r;
+  const stepRunId = currentRunId;
+  try {
+    const runPromise = bridge.runClaude({
+      runId: stepRunId, prompt, cwd: cwd || state.cwd, claudePath: state.claudePath || "",
+      mode: "normal", permissionMode: permissionMode || state.permissionMode || "auto",
+      runnerStrategy: state.runnerStrategy || "seamless",
+      providerId: providerId || "", sessionId: "", clientSessionKey: state.clientSessionKey, extraArgs: [],
+    });
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("runClaude timeout")), 30000);
+    });
+    r = await Promise.race([runPromise, timeoutPromise]);
+  } catch (error) {
+    if (bridge?.stopClaude && /timeout/i.test(String(error?.message))) bridge.stopClaude(stepRunId);
+    r = { ok: false, error: error?.message || String(error || "runClaude failed") };
+  }
 
   if (!r.ok) {
     deps.addTimeline?.("error", "准备失败", friendlyRunError(r.error));
     deps.finishReplayRun?.({ ok: false, error: r.error || "runClaude failed" });
+    currentRunId = "";
     setRunning(false);
     return { ok: false, output: "", error: r.error || "runClaude failed" };
   }
@@ -255,9 +275,20 @@ export function setRunning(on) {
   deps.renderContextStack?.();
 }
 
+let _renderTimer = null;
+function debouncedRender() {
+  clearTimeout(_renderTimer);
+  _renderTimer = setTimeout(() => deps.renderMessages?.(), 80);
+}
+
+export function flushRender() {
+  clearTimeout(_renderTimer);
+  deps.renderMessages?.();
+}
+
 export function updateLast(content) {
   const last = state.messages[state.messages.length - 1];
-  if (last?.role === "assistant") { last.content = content; save(); deps.renderMessages?.(); }
+  if (last?.role === "assistant") { last.content = content; save(); debouncedRender(); }
 }
 
 function setLastRecoveryActions(actions = []) {
@@ -291,21 +322,22 @@ export function pushThink(v) {
   if (liveThinking.length > 8) liveThinking.shift();
   const last = state.messages[state.messages.length - 1];
   if (last?.role === "assistant") last.thinking = [...liveThinking];
-  deps.renderMessages?.();
+  debouncedRender();
 }
 
 export function clearThink() {
   if (liveThinking.length) {
-    const last = state.messages[state.messages.length - 1];
-    if (last?.role === "assistant") last.thinking = [...liveThinking];
     liveThinking = [];
+    const last = state.messages[state.messages.length - 1];
+    if (last?.role === "assistant") { delete last.thinking; }
     save();
-    deps.renderMessages?.();
+    debouncedRender();
   }
 }
 
 export function autosize() {
   const ta = $("#promptInput");
+  if (!ta) return;
   ta.style.height = "auto";
   ta.style.height = `${Math.min(90, ta.scrollHeight)}px`;
 }
@@ -328,10 +360,10 @@ export function onClaudeEvent(payload) {
 }
 
 export function onClaudeStderr(p) {
-  if (p.runId !== currentRunId || assistantBuffer) return;
+  if (p.runId !== currentRunId) return;
   const text = String(p.text || "").trim().slice(0, 120);
   if (text) deps.addTimeline?.("warn", "进程输出", text);
-  pushThink(`${text}`);
+  if (!assistantBuffer) pushThink(`${text}`);
 }
 
 export function handleAskUser(payload) {
@@ -419,6 +451,7 @@ export function onClaudeDone(p) {
   deps.finishReplayRun?.({ ok: p.ok, stderr: p.stderr || "", error: p.error || "" });
   setRunning(false);
   clearThink();
+  flushRender();
 
   const pill = $("#runnerPill");
   if (pill) {
@@ -440,7 +473,7 @@ export function retryLastPrompt() {
     if (state.messages[i].role === 'user') {
       const input = $("#promptInput");
       if (input) {
-        input.value = state.messages[i].content;
+        input.value = state.messages[i].originalPrompt || state.messages[i].content;
         autosize();
         submitPrompt();
       }

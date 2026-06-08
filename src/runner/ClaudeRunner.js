@@ -88,8 +88,10 @@ function versionedNodeBins() {
   return bins.filter(p => existsSync(p));
 }
 
+let _cachedDriveRoots = null;
 function driveNodeRoots() {
   if (!isWindows) return [];
+  if (_cachedDriveRoots) return _cachedDriveRoots;
   const roots = [];
   for (let code = 67; code <= 90; code++) {
     roots.push(`${String.fromCharCode(code)}:\\Nodejs`);
@@ -97,6 +99,7 @@ function driveNodeRoots() {
     roots.push(`${String.fromCharCode(code)}:\\Node`);
     roots.push(`${String.fromCharCode(code)}:\\node`);
   }
+  _cachedDriveRoots = roots;
   return roots;
 }
 
@@ -278,6 +281,7 @@ class Runner {
     const args = buildArgs({ ...this.payload, persistent: true });
     this.startedAt = Date.now();
     this.finished = false;
+    this._exiting = false;
     const cwd = resolveCwd(this.payload.cwd);
     this.payload.effectiveCwd = cwd;
     const opts = { cwd, env: toolEnv({ ComSpec: process.env.ComSpec || join(process.env.SystemRoot || "C:\\Windows", "System32", "cmd.exe") }), windowsHide: true };
@@ -290,14 +294,15 @@ class Runner {
     this.child.on("close", c => this.onExit(c, null));
   }
 
-  send({ runId, prompt }) {
-    this.payload = { ...this.payload, runId, prompt };
+  send(newPayload) {
+    if (this.busy) return { ok: false, error: "当前 Runner 正忙，请等当前任务结束后再发送。", busy: true };
+    this.payload = { ...this.payload, ...newPayload };
+    const { runId, prompt } = this.payload;
     if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
     this.start();
     if (!this.child?.stdin?.writable) return { ok: false, error: "Runner not writable", fallback: true };
-    if (this.busy) return { ok: false, error: "当前 Runner 正忙，请等当前任务结束后再发送。", busy: true };
     this.busy = true; this.currentRunId = runId; this.stderrBuf = ""; this.lastUsedAt = Date.now();
-    this.finished = false;
+    this.finished = false; this._exiting = false;
     activeRuns.set(runId, this);
     this.emitStatus(Date.now() - this.startedAt < 1500 ? "starting" : "running", Date.now() - this.startedAt < 1500 ? "准备上下文" : "继续处理");
     this.child.stdin.write(streamInput(prompt, this.payload.permissionMode));
@@ -371,12 +376,14 @@ class Runner {
   }
 
   onExit(code, error) {
-    if (this.finished) {
-      // 已经完成，只清理 runner
-      this.status = "idle";
-      this.busy = false; this.currentRunId = ""; runners.delete(this.key);
+    if (this.finished || this._exiting) {
+      if (this.finished) {
+        this.status = "idle";
+        this.busy = false; this.currentRunId = ""; runners.delete(this.key);
+      }
       return;
     }
+    this._exiting = true;
 
     // 检查是否需要重试（非正常退出且有待处理的请求）
     const shouldRetry = this.currentRunId && code !== 0 && this.retryCount < this.maxRetries;
@@ -391,8 +398,9 @@ class Runner {
           progress: `连接中断，正在重试 (${this.retryCount}/${this.maxRetries})...`
         });
         // 延迟后重试
+        const retryRunId = this.currentRunId;
         setTimeout(() => {
-          if (this.currentRunId) {
+          if (this.currentRunId === retryRunId && this.status === "retrying") {
             this.child = null;
             this.start();
             if (this.child?.stdin?.writable) {
@@ -412,6 +420,7 @@ class Runner {
         retried: this.retryCount > 0
       });
     }
+    if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
     this.busy = false; this.currentRunId = ""; runners.delete(this.key);
   }
 }

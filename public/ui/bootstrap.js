@@ -1,4 +1,4 @@
-﻿import { data, save, state } from "./state.js";
+﻿import { data, save, saveImmediate, state } from "./state.js";
 import { getBridge, safeBridge, runtimeAction } from "./bridge.js";
 import { $, basename, toast } from "./helpers.js";
 import { configure as configureDataLoader, loadProviders, loadSkills, loadSkillCategories, loadIdentities, loadTeams, loadAgentTasks, loadMcp, loadPlugins, loadAutomations, loadUsage, loadRunners, loadDiag, loadProjects, refreshProjectIndex, checkEnv, syncActiveIdentity, mergeCustomProjects, projectIndexState, setProjectIndexState, skillCategoriesLoaded, setSkillCategoriesLoaded, getLastRefresh, setLastRefresh, refreshSettingsIfOpen } from "./data-loader.js";
@@ -9,7 +9,7 @@ import { configure as configureSearch, openSearchPanel, closeSearchPanel, render
 import { configure as configureDropdowns, closeAllDropdowns, populateIdentitiesSubmenu, populateModelDropdown, updateModelLabel, initDropdowns } from "./dropdowns.js";
 import { configure as configureSettings, openSettings, openTeamsBuilder, renderSettingsTab, settingsPage, settingsBody, teamsPage, initSettings } from "./settings/index.js";
 import { configure as configureSetup, claudeSetupState, getClaudeSetupState, handleClaudeDetectResult, initSetup } from "./setup.js";
-import { configure as configureChatEngine, setMode, setPerm, setRunning, autosize, onClaudeEvent, onClaudeStderr, onClaudeDone, handleAskUser, currentRunId, getCurrentRunId, initChatEngine, retryLastPrompt } from "./chat-engine.js";
+import { configure as configureChatEngine, setMode, setPerm, setRunning, autosize, onClaudeEvent, onClaudeStderr, onClaudeDone, handleAskUser, currentRunId, getCurrentRunId, clearCurrentRunId, initChatEngine, retryLastPrompt } from "./chat-engine.js";
 import { configure as configureOnboarding, initOnboarding, openHelp } from "./onboarding.js";
 import { switchIdentity as switchIdentitySetting } from "./settings/identities.js";
 import { switchProvider as switchProviderSetting } from "./settings/providers.js";
@@ -28,7 +28,7 @@ export function getInitialLoadDone() { return initialLoadDone; }
 export function newChat() {
   state.messages = []; state.selectedSession = ""; state.selectedSessionPath = "";
   state.clientSessionKey = crypto.randomUUID(); state.pendingPlanPrompt = ""; state.mode = "normal";
-  save(); renderMessages(); $("#promptInput").focus();
+  saveImmediate(); renderMessages(); $("#promptInput").focus();
 }
 
 function setQuickNavActive(key = "chat") {
@@ -313,6 +313,7 @@ export function initApp() {
     if (runId) {
       e.preventDefault();
       if (bridge?.stopClaude) await bridge.stopClaude(runId);
+      clearCurrentRunId();
       setRunning(false);
     }
   });
@@ -385,7 +386,7 @@ export function initApp() {
       if (cmdOverlay?.classList.contains('is-open')) { closeCommandPalette(); return; }
       if (teamsPage?.classList.contains("is-open")) { teamsPage.classList.remove("is-open"); return; }
       if (settingsPage.classList.contains("is-open")) { settingsPage.classList.remove("is-open"); return; }
-      if (getCurrentRunId() && bridge?.stopClaude) { bridge.stopClaude(getCurrentRunId()); setRunning(false); return; }
+      if (getCurrentRunId() && bridge?.stopClaude) { bridge.stopClaude(getCurrentRunId()); clearCurrentRunId(); setRunning(false); return; }
     }
     if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); openCommandPalette(); return; }
     if (mod && e.key.toLowerCase() === "n") { e.preventDefault(); newChat(); return; }
@@ -511,9 +512,15 @@ export function initApp() {
   // Boot
   boot().catch(e => {
     console.error("Init error:", e);
+    initialLoadDone = true;
   });
 
   // Auto-refresh
   setInterval(throttledRefresh, 60000);
   window.addEventListener("focus", throttledRefresh);
+
+  // localStorage quota warning
+  window.addEventListener("ccs:quota-exceeded", () => {
+    toast("本地存储已满，部分数据可能无法保存。建议清理旧对话或导出备份。", "warning");
+  });
 }
