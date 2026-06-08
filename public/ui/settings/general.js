@@ -246,19 +246,15 @@ export function renderGeneralSettings(deps) {
       if (r.ok) {
         toast(`开始安装 Claude Code ${result.version || "latest"}...`, "info");
         // Listen for progress
-        const handler = (payload = {}) => {
-          if (payload.status === "done" && payload.ok) {
-            toast(`安装完成 v${payload.version || ""}`, "success");
-            bridge.onClaudeInstallProgress?.(() => {});
-          } else if (payload.status === "failed") {
-            toast("安装失败: " + (payload.error || ""), "error");
-            bridge.onClaudeInstallProgress?.(() => {});
-          }
-        };
         if (bridge?.onClaudeInstallProgress) {
-          const unsub = bridge.onClaudeInstallProgress((p) => {
-            handler(p);
-            if (p.status === "done" || p.status === "failed") unsub?.();
+          const unsub = bridge.onClaudeInstallProgress((p = {}) => {
+            if (p.status === "done" && p.ok) {
+              toast(`安装完成 v${p.version || ""}`, "success");
+              unsub?.();
+            } else if (p.status === "failed") {
+              toast("安装失败: " + (p.error || ""), "error");
+              unsub?.();
+            }
           });
         }
       } else {

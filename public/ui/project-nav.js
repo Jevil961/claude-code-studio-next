@@ -1,4 +1,4 @@
-import { data, save, sessMeta, state } from "./state.js";
+import { data, save, saveImmediate, sessMeta, state } from "./state.js";
 import { safeBridge, selProject } from "./bridge.js";
 import { $, basename, fmtTime, hlMatch, searchable, toast } from "./helpers.js";
 import { showConfirm, showModal } from "./modal.js";
@@ -17,6 +17,7 @@ export function decodeProjectDisplay(name) {
 
 export function renderProjects() {
   const list = $("#projectList");
+  if (!list) return;
   list.innerHTML = "";
   const term = state.searchTerm;
   const initialLoadDone = deps.getInitialLoadDone?.() || false;
@@ -54,7 +55,7 @@ export function selectProject(proj) {
   } else {
     state.mode = "continue";
   }
-  save();
+  saveImmediate();
   deps.setMode?.(state.mode);
   renderProjects();
   renderConvs();
@@ -64,6 +65,7 @@ export function selectProject(proj) {
 
 export function renderConvs() {
   const list = $("#convList");
+  if (!list) return;
   list.innerHTML = "";
   const tpl = $("#tplConv");
   const proj = selProject();

@@ -17,6 +17,7 @@ export function getAttachedFiles() { return attachedFiles; }
 
 export function renderMessages() {
   const transcript = $("#transcript");
+  if (!transcript) return;
   transcript.innerHTML = "";
   if (!state.messages.length) {
     const hasProvider = Boolean(data.providers.length);

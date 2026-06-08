@@ -3098,6 +3098,7 @@ pre code { padding: 0; background: none; }
 .toast span:first-child { min-width: 0; overflow-wrap: anywhere; line-height: 1.45; }
 .toast.ok { border-color: rgba(61, 220, 151, 0.32); background: var(--td-success-color-light); }
 .toast.err { border-color: rgba(255, 107, 122, 0.34); background: var(--td-error-color-light); }
+.toast.warn { border-color: rgba(255, 193, 7, 0.34); background: rgba(255, 193, 7, 0.08); }
 .toast.out { opacity: 0; transform: translateY(-4px); }
 .toast-retry {
   height: 24px;

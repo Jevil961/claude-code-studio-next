@@ -83,7 +83,7 @@ async function addMcpDlg(deps) {
   ]);
   if (!result || !result.name) return;
   try { JSON.parse(result.config); } catch { toast("JSON 无效", "error"); return; }
-  const r = await safeBridge("addMcp", null, result.name, result.config);
+  const r = await safeBridge("addMcp", null, result.name, JSON.parse(result.config));
   if (r.ok) { toast(`已添加：${result.name}`, "success"); await loadMcp(); renderSettingsTab(); }
   else toast(r.error || "添加失败", "error");
 }

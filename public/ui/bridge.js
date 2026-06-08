@@ -28,5 +28,6 @@ export function runtimeAction(name) {
     };
     const bridgeMethod = tauriWindowMap[name];
     if (bridgeMethod && typeof bridge?.[bridgeMethod] === "function") return bridge[bridgeMethod](...args);
+    console.warn(`[bridge] runtimeAction "${name}": no runtime or bridge method available`);
   };
 }

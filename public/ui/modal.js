@@ -81,6 +81,7 @@ export function showModal(title, fields) {
           const errDiv = document.createElement('div'); errDiv.className = 'field-error';
           div.append(errDiv);
           fieldsEl.append(div);
+          inp.addEventListener('input', () => validateField(f, inp.value, div));
           continue;
         }
       }

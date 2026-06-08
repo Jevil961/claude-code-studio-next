@@ -44,7 +44,7 @@ export function toast(msg, type = "info", retryFn) {
   }
 
   const t = document.createElement("div");
-  t.className = `toast ${type === "error" ? "err" : type === "success" ? "ok" : ""}`;
+  t.className = `toast ${type === "error" ? "err" : type === "success" ? "ok" : type === "warning" ? "warn" : ""}`;
   t.setAttribute('role', 'alert');
 
   const textSpan = document.createElement('span');

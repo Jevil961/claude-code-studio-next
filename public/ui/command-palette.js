@@ -2,6 +2,7 @@
 
 import { data, state, save } from './state.js';
 import { $ } from './helpers.js';
+import { escapeHtml } from '../markdown.js';
 
 let deps = {};
 let activeIndex = 0;
@@ -140,7 +141,7 @@ function render(groups) {
       btn.className = 'cmd-palette-item';
       btn.dataset.idx = flatIdx;
       if (flatIdx === activeIndex) btn.classList.add('is-active');
-      btn.innerHTML = `<span class="cmd-palette-item-icon">${item.icon || ''}</span><span class="cmd-palette-item-label">${item.label}</span>${item.hint ? `<span class="cmd-palette-item-hint">${item.hint}</span>` : ''}`;
+      btn.innerHTML = `<span class="cmd-palette-item-icon">${item.icon || ''}</span><span class="cmd-palette-item-label">${escapeHtml(item.label)}</span>${item.hint ? `<span class="cmd-palette-item-hint">${escapeHtml(item.hint)}</span>` : ''}`;
       btn.addEventListener('click', () => { execute(item); });
       btn.addEventListener('mouseenter', () => {
         activeIndex = parseInt(btn.dataset.idx);

@@ -86,10 +86,11 @@ async function editProviderDlg(item, { settingsBody, renderSettingsTab }) {
     { key: "name", label: "名称", value: item.name },
     { key: "baseUrl", label: "Base URL", value: item.baseUrl || "" },
     { key: "authToken", label: "Auth Token (留空不修改)", value: "", type: "password" },
+    { key: "apiFormat", label: "API 格式", type: "select", options: [{ value: "anthropic", label: "Anthropic 原生" }, { value: "openai", label: "OpenAI 兼容" }, { value: "gemini", label: "Google Gemini" }], value: item.apiFormat || "openai" },
     { key: "model", label: "默认模型", value: item.model || "" },
   ]);
   if (!result) return;
-  const updates = { name: result.name?.trim() || item.name, model: result.model?.trim() || "", baseUrl: result.baseUrl?.trim() || "" };
+  const updates = { name: result.name?.trim() || item.name, model: result.model?.trim() || "", baseUrl: result.baseUrl?.trim() || "", apiFormat: result.apiFormat || item.apiFormat || "openai" };
   if (result.authToken?.trim()) updates.authToken = result.authToken.trim();
   const r = await safeBridge("updateProvider", null, item.id, updates);
   if (r.ok) { toast("已更新", "success"); await loadProviders(); renderSettingsTab(); }
