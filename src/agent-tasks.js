@@ -228,7 +228,7 @@ function parseStatusRows(stdout) {
     .filter(Boolean)
     .map(line => ({
       status: line.slice(0, 2).trim() || "??",
-      path: (line.startsWith("?? ") ? line.slice(3) : line.slice(3)).trim(),
+      path: line.slice(3).trim(),
     }))
     .filter(item => item.path);
 }
