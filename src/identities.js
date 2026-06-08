@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, unlinkSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -16,8 +16,15 @@ function loadFile() {
 
 function saveFile(data) {
   const file = identitiesPath();
+  const tmp = file + ".tmp";
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(data, null, 2), "utf8");
+  try {
+    writeFileSync(tmp, JSON.stringify(data, null, 2), "utf8");
+    renameSync(tmp, file);
+  } catch (e) {
+    try { unlinkSync(tmp); } catch {}
+    throw e;
+  }
 }
 
 // ── Categories structure helpers ──

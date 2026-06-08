@@ -15,6 +15,7 @@ function defaults() {
     clientSessionKey: crypto.randomUUID(), pendingPlanPrompt: "",
     searchTerm: "", sessionMeta: {}, priceTable: {}, defaultCwd: "", customProjects: [], teamRuns: {},
     density: "default", diagnosticsLog: [], sidebarOpen: true, contextOpen: true, firstRunDone: false,
+    teamConnectFrom: "",
   };
 }
 
@@ -23,12 +24,31 @@ export const state = (() => {
   catch { return defaults(); }
 })();
 
-export function save() {
+let _saveTimer = null;
+let _lastSaveErr = false;
+
+function doSave() {
   try {
-    localStorage.setItem(SK, JSON.stringify({ ...state, messages: state.messages.map(({ thinking, ...m }) => m) }));
+    const { teamConnectFrom, ...persistedState } = state;
+    localStorage.setItem(SK, JSON.stringify({ ...persistedState, messages: state.messages.map(({ thinking, originalPrompt, ...m }) => m) }));
+    if (_lastSaveErr) { _lastSaveErr = false; }
   } catch (e) {
     console.error("[state] save failed:", e.message);
+    if (e.name === "QuotaExceededError" || /quota/i.test(e.message)) {
+      _lastSaveErr = true;
+      try { window.dispatchEvent(new CustomEvent("ccs:quota-exceeded", { detail: { error: e.message } })); } catch {}
+    }
   }
+}
+
+export function save() {
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(doSave, 200);
+}
+
+export function saveImmediate() {
+  clearTimeout(_saveTimer);
+  doSave();
 }
 
 export function sessMeta(id) { if (!id) return {}; state.sessionMeta[id] ||= {}; return state.sessionMeta[id]; }

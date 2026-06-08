@@ -381,9 +381,10 @@ export function installNode(version) {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           const redirectUrl = res.headers.location;
           try {
-            const redirectHost = new URL(redirectUrl).host;
+            const resolvedUrl = new URL(redirectUrl, downloadUrl).href;
+            const redirectHost = new URL(resolvedUrl).host;
             const originalHost = new URL(downloadUrl).host;
-            if (redirectHost !== originalHost || !redirectUrl.startsWith("https")) {
+            if (redirectHost !== originalHost || !resolvedUrl.startsWith("https")) {
               activeInstalls.delete(installId);
               send({ status: "failed", progress: "重定向目标不安全", ok: false, phase: "node", error: "Redirect to different host rejected" });
               return;
@@ -393,7 +394,7 @@ export function installNode(version) {
             send({ status: "failed", progress: "重定向 URL 格式无效", ok: false, phase: "node", error: "Invalid redirect URL" });
             return;
           }
-          doDownload(redirectUrl, redirects + 1);
+          doDownload(new URL(redirectUrl, downloadUrl).href, redirects + 1);
           return;
         }
         if (res.statusCode !== 200) {
@@ -562,4 +563,11 @@ export function cancelInstall(installId) {
   try { install.child.kill("SIGTERM"); } catch {}
   activeInstalls.delete(installId);
   return { ok: true };
+}
+
+export function cancelAllInstalls() {
+  for (const [id, install] of activeInstalls) {
+    try { install.child.kill("SIGTERM"); } catch {}
+  }
+  activeInstalls.clear();
 }

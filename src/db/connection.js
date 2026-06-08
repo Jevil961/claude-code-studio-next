@@ -16,9 +16,6 @@ let dbPromise = null;
 let dbPath = process.env.CCSWITCH_DB_PATH || DB_PATH;
 let claudeSettingsPath = process.env.CLAUDE_SETTINGS_PATH || CLAUDE_SETTINGS;
 
-// 写入锁，防止并发写入
-let persistLock = false;
-let persistQueued = false;
 
 export async function getDb() {
   if (db) return db;
@@ -93,27 +90,27 @@ export function queryOne(sql, params = []) {
   return query(sql, params)[0] || null;
 }
 
+let _persistFailed = false;
+
 export function persist() {
   if (!db) return;
-  if (persistLock) { persistQueued = true; return; }
-  persistLock = true;
   try {
     mkdirSync(dirname(dbPath), { recursive: true });
     writeFileSync(dbPath, Buffer.from(db.export()));
+    if (_persistFailed) _persistFailed = false;
   } catch (e) {
     console.error("[db] persist failed:", e.message);
-  } finally {
-    persistLock = false;
-    if (persistQueued) {
-      persistQueued = false;
-      persist();
-    }
+    _persistFailed = true;
   }
 }
 
 export function run(sql, params = []) {
   requireDb().run(sql, params);
   persist();
+}
+
+export function runNoPersist(sql, params = []) {
+  requireDb().run(sql, params);
 }
 
 export function loadJson(v, def) { try { return JSON.parse(v || ""); } catch { return def; } }

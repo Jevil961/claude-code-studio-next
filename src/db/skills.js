@@ -16,7 +16,7 @@ export function list() {
 export function sync(dirs = null) {
   mkdirSync(PATHS.CLAUDE_SKILLS, { recursive: true });
   let rows;
-  if (dirs?.length) {
+  if (dirs != null) {
     const ph = dirs.map(() => "?").join(",");
     rows = query(`SELECT name,directory FROM skills WHERE directory IN (${ph})`, dirs);
   } else {
@@ -50,7 +50,7 @@ export function sync(dirs = null) {
 
 export function previewSync(dirs = null) {
   let rows;
-  if (dirs?.length) {
+  if (dirs != null) {
     const ph = dirs.map(() => "?").join(",");
     rows = query(`SELECT name,directory FROM skills WHERE directory IN (${ph})`, dirs);
   } else {

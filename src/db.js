@@ -115,7 +115,8 @@ export function listUsage(options = {}) {
 
 function computeUsage() {
   const root = join(homedir(), ".claude", "projects");
-  const totals = { requests: 0, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 };
+  const zeroes = () => ({ requests: 0, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 });
+  const totals = zeroes();
   const byModel = {}, byProject = {}, daily = {}, sessions = {};
   if (!existsSync(root)) return { totals, byModel: [], byProject: [], daily: [], sessions: [] };
   const MAX_FILES_PER_PROJECT = 6;
@@ -125,7 +126,7 @@ function computeUsage() {
     if (projectCount++ >= MAX_PROJECTS) break;
     const pdir = join(root, pn);
     if (!statSync(pdir).isDirectory()) continue;
-    const pb = byProject[pn] || (byProject[pn] = { ...totals, id: pn, name: pn, path: decodeProjectName(pn), updatedAt: Math.floor(statSync(pdir).mtimeMs / 1000) });
+    const pb = byProject[pn] || (byProject[pn] = { ...zeroes(), id: pn, name: pn, path: decodeProjectName(pn), updatedAt: Math.floor(statSync(pdir).mtimeMs / 1000) });
     const files = readdirSync(pdir).filter(f => f.endsWith(".jsonl")).sort((a, b) => {
       const sa = tryStat(join(pdir, a)), sb = tryStat(join(pdir, b));
       return (sb?.mtimeMs || 0) - (sa?.mtimeMs || 0);
@@ -134,7 +135,7 @@ function computeUsage() {
       const fp = join(pdir, file), st = tryStat(fp);
       if (!st) continue;
       const sid = file.replace(/\.jsonl$/, "");
-      const sb = sessions[sid] || (sessions[sid] = { ...totals, id: sid, projectId: pn, projectPath: decodeProjectName(pn), title: readSessionTitle(fp) || sid, updatedAt: Math.floor(st.mtimeMs / 1000), models: {} });
+      const sb = sessions[sid] || (sessions[sid] = { ...zeroes(), id: sid, projectId: pn, projectPath: decodeProjectName(pn), title: readSessionTitle(fp) || sid, updatedAt: Math.floor(st.mtimeMs / 1000), models: {} });
       try {
         for (const line of readFileSync(fp, "utf8").split(/\r?\n/)) {
           if (!line.trim()) continue;
@@ -143,8 +144,8 @@ function computeUsage() {
           const model = obj.message.model || "unknown";
           const ts = obj.timestamp ? Math.floor(new Date(obj.timestamp).getTime() / 1000) : Math.floor(st.mtimeMs / 1000);
           const day = new Date(ts * 1000).toISOString().slice(0, 10);
-          const mb = byModel[model] || (byModel[model] = { ...totals, model });
-          const db = daily[day] || (daily[day] = { ...totals, date: day });
+          const mb = byModel[model] || (byModel[model] = { ...zeroes(), model });
+          const db = daily[day] || (daily[day] = { ...zeroes(), date: day });
           const inp = Number(u.input_tokens || 0), out = Number(u.output_tokens || 0), cc = Number(u.cache_creation_input_tokens || 0), cr = Number(u.cache_read_input_tokens || 0);
           for (const t of [totals, pb, sb, mb, db]) { t.requests++; t.inputTokens += inp; t.outputTokens += out; t.cacheCreationTokens += cc; t.cacheReadTokens += cr; t.totalTokens += inp + out + cc + cr; }
           sb.updatedAt = Math.max(sb.updatedAt, ts); pb.updatedAt = Math.max(pb.updatedAt, ts);

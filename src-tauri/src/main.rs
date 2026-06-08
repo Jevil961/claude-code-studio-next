@@ -290,7 +290,12 @@ fn choose_file() -> String {
 
 #[tauri::command]
 fn open_path(value: String) -> Value {
-    match open::that(value) {
+    // Only allow file paths and http(s) URLs
+    let trimmed = value.trim();
+    if !(trimmed.starts_with("http://") || trimmed.starts_with("https://") || std::path::Path::new(trimmed).exists()) {
+        return json!({ "ok": false, "error": "Path does not exist or is not a valid URL" });
+    }
+    match open::that(trimmed) {
         Ok(_) => json!({ "ok": true }),
         Err(err) => json!({ "ok": false, "error": err.to_string() }),
     }
