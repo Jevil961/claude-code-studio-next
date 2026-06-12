@@ -130,13 +130,17 @@ export function updateModelLabel() {
   $("#modelLabel").textContent = p?.model || p?.name || "未设置";
 }
 
+function clickedInside(target, selector) {
+  return Boolean(target?.closest?.(selector));
+}
+
 export function initDropdowns() {
   // Document-level close handlers
   document.addEventListener("click", e => {
-    if (!e.target.closest(".float-dropdown") && !e.target.closest(".add-menu") && !e.target.closest("#addBtn") && !e.target.closest("#modelBtn") && !e.target.closest("#permBtn")) {
+    if (!clickedInside(e.target, ".float-dropdown") && !clickedInside(e.target, ".add-menu") && !clickedInside(e.target, "#addBtn") && !clickedInside(e.target, "#modelBtn") && !clickedInside(e.target, "#permBtn")) {
       closeAllDropdowns();
     }
-    if (!e.target.closest("#searchPanel") && !e.target.closest("#searchBtn")) deps.closeSearchPanel?.();
+    if (!clickedInside(e.target, "#searchPanel") && !clickedInside(e.target, "#searchBtn")) deps.closeSearchPanel?.();
   });
   document.addEventListener("keydown", e => {
     if (e.key === "Escape") { closeAllDropdowns(); return; }

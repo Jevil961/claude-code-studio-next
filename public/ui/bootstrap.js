@@ -1,9 +1,9 @@
 ﻿import { data, save, saveImmediate, state } from "./state.js";
 import { getBridge, safeBridge, runtimeAction } from "./bridge.js";
 import { $, basename, toast } from "./helpers.js";
-import { configure as configureDataLoader, loadProviders, loadSkills, loadSkillCategories, loadIdentities, loadTeams, loadAgentTasks, loadMcp, loadPlugins, loadAutomations, loadUsage, loadRunners, loadDiag, loadProjects, refreshProjectIndex, checkEnv, syncActiveIdentity, mergeCustomProjects, projectIndexState, setProjectIndexState, skillCategoriesLoaded, setSkillCategoriesLoaded, getLastRefresh, setLastRefresh, refreshSettingsIfOpen } from "./data-loader.js";
+import { configure as configureDataLoader, loadProviders, loadSkills, loadSkillCategories, loadIdentities, loadTeams, loadAgentTasks, loadMcp, loadPlugins, loadAutomations, loadUsage, loadRunners, loadAgentRuntimes, loadDiag, loadProjects, refreshProjectIndex, checkEnv, syncActiveIdentity, mergeCustomProjects, projectIndexState, setProjectIndexState, skillCategoriesLoaded, setSkillCategoriesLoaded, getLastRefresh, setLastRefresh, refreshSettingsIfOpen } from "./data-loader.js";
 import { configure as configureContextFooter, updateFooter, renderContextStack, addTimeline, timelineFromClaudeEvent, setRunTimeline, setRunTouchedFiles, setLastTimelineKey } from "./context-footer.js";
-import { configure as configureMessages, renderMessages, addAttachments, renderAttachments, promptWithAttachments, setAttachedFiles, getAttachedFiles, exportConversation, openReplayPanel, startReplayRun, recordReplayEvent, finishReplayRun } from "./messages.js";
+import { configure as configureMessages, renderMessages, addAttachments, renderAttachments, promptWithAttachments, setAttachedFiles, getAttachedFiles, exportConversation, openReplayPanel, startReplayRun, recordReplayEvent, finishReplayRun, getLatestReplaySnapshot } from "./messages.js";
 import { configure as configureProjectNav, renderProjects, selectProject, renderConvs, selectSession, loadSession, recoverMissingSession, validateActiveSession, initProjectNav } from "./project-nav.js";
 import { configure as configureSearch, openSearchPanel, closeSearchPanel, renderSearchResults } from "./search.js";
 import { configure as configureDropdowns, closeAllDropdowns, populateIdentitiesSubmenu, populateModelDropdown, updateModelLabel, initDropdowns } from "./dropdowns.js";
@@ -24,6 +24,20 @@ export let initialLoadDone = false;
 let identityAnalysisState = { running: false, status: "idle", message: "" };
 
 export function getInitialLoadDone() { return initialLoadDone; }
+
+function setContextOpen(open) {
+  const isOpen = Boolean(open);
+  const contextStack = $("#contextStack");
+  const contextToggle = $("#contextToggle");
+  const contextRail = $("#contextRail");
+  state.contextOpen = isOpen;
+  contextStack?.classList.toggle("is-collapsed", !isOpen);
+  contextToggle?.setAttribute("aria-expanded", String(isOpen));
+  contextToggle?.setAttribute("aria-label", isOpen ? "隐藏右侧数据" : "展开右侧数据");
+  contextRail?.setAttribute("aria-hidden", String(isOpen));
+  contextRail?.setAttribute("tabindex", isOpen ? "-1" : "0");
+  document.querySelector(".tooltip-content")?.classList.remove("is-visible");
+}
 
 export function newChat() {
   state.messages = []; state.selectedSession = ""; state.selectedSessionPath = "";
@@ -67,6 +81,7 @@ export function applyBootstrap(payload) {
   if (Array.isArray(d.plugins)) data.plugins = d.plugins;
   if (Array.isArray(d.automations)) data.automations = d.automations;
   if (Array.isArray(d.runners)) data.runners = d.runners;
+  if (Array.isArray(d.agentRuntimes)) data.agentRuntimes = d.agentRuntimes;
   delete data.loadErrors.bootstrap;
   updateFooter();
   updateWorkspacePills();
@@ -125,14 +140,21 @@ function deferWork(fn, timeout = 300) {
 }
 
 export async function boot() {
+  // Clear stale search term from previous session
+  if (state.searchTerm) { state.searchTerm = ""; save(); }
+
   const bridge = getBridge();
   const sidebar = $("#sidebar");
-  const contextStack = $("#contextStack");
 
-  if (state.contextOpen === undefined) state.contextOpen = true;
+  if (state.contextOpen === undefined) state.contextOpen = false;
+  if (state.contextAutoShielded !== true) {
+    state.contextOpen = false;
+    state.contextAutoShielded = true;
+    save();
+  }
   if (typeof window !== "undefined" && window.innerWidth <= 700) state.sidebarOpen = false;
   sidebar?.classList.toggle("is-collapsed", !state.sidebarOpen);
-  contextStack?.classList.toggle("is-collapsed", !state.contextOpen);
+  setContextOpen(state.contextOpen);
   setPerm(state.permissionMode || "auto");
   renderProjects();
   renderConvs();
@@ -164,6 +186,7 @@ export async function boot() {
   }
   renderProjects();
   renderConvs();
+  renderMessages();
   updateFooter();
   updateWorkspacePills();
   populateModelDropdown();
@@ -184,6 +207,7 @@ export async function boot() {
     loadMcp(),
     loadPlugins(),
     loadRunners(),
+    loadAgentRuntimes(),
     loadAgentTasks(),
   ]);
   if (bootstrapped) deferWork(loadSecondary, 400);
@@ -279,17 +303,17 @@ export function initApp() {
 
   // Sidebar toggle
   const sidebar = $("#sidebar");
-  const contextStack = $("#contextStack");
   $("#sidebarToggle")?.addEventListener("click", () => {
     state.sidebarOpen = !state.sidebarOpen;
     save();
     sidebar.classList.toggle("is-collapsed", !state.sidebarOpen);
   });
-  $("#contextToggle")?.addEventListener("click", () => {
-    state.contextOpen = !(state.contextOpen !== false);
+  const toggleContext = () => {
+    setContextOpen(!(state.contextOpen !== false));
     save();
-    contextStack?.classList.toggle("is-collapsed", !state.contextOpen);
-  });
+  };
+  $("#contextToggle")?.addEventListener("click", toggleContext);
+  $("#contextRail")?.addEventListener("click", toggleContext);
 
   // Plan buttons
   $("#approvePlanBtn")?.addEventListener("click", () => {
@@ -357,24 +381,34 @@ export function initApp() {
       toast("当前运行环境不支持选择目录，请在桌面应用中打开。", "error");
       return;
     }
-    const folder = await bridge?.chooseFolder?.();
-    if (!folder) return;
+    let folder;
+    try {
+      folder = await bridge.chooseFolder();
+    } catch (e) {
+      toast("目录选择失败: " + String(e?.message || e || "unknown"), "error");
+      return;
+    }
+    if (!folder) return; // User cancelled
     state.cwd = folder;
-    const existingPaths = new Set(data.projects.map(p => (p.path || "").toLowerCase()));
-    if (!existingPaths.has(folder.toLowerCase())) {
+    const folderLower = folder.toLowerCase();
+    const existing = data.projects.find(p => (p.path || "").toLowerCase() === folderLower);
+    if (existing) {
+      state.selectedProject = existing.id;
+    } else {
       const proj = { id: folder, name: basename(folder), path: folder, updatedAt: Math.floor(Date.now() / 1000), sessions: [], sessionCount: 0 };
       data.projects.unshift(proj);
       state.customProjects = state.customProjects || [];
-      if (!state.customProjects.some(p => (p.path || "").toLowerCase() === folder.toLowerCase())) {
+      if (!state.customProjects.some(p => (p.path || "").toLowerCase() === folderLower)) {
         state.customProjects.push(proj);
       }
+      state.selectedProject = proj.id;
     }
-    state.selectedProject = folder;
     save();
     renderProjects();
+    renderConvs();
     updateFooter();
     updateWorkspacePills();
-    toast(`已选择项目：${basename(folder)}`, "success");
+    toast(`已添加项目：${folder}`, "success");
   });
 
   // Keyboard shortcuts
@@ -446,12 +480,13 @@ export function initApp() {
     closeSearchPanel,
   });
   configureSettings({
-    loadPlugins, loadMcp, loadRunners, loadUsage, loadDiag, loadTeams, loadAgentTasks,
+    loadPlugins, loadMcp, loadRunners, loadAgentRuntimes, loadUsage, loadDiag, loadTeams, loadAgentTasks,
     settingsPage,
     updateFooter, populateModelDropdown, populateIdentitiesSubmenu,
     setPerm,
     curProvider: () => data.providers.find(p => p.current) || data.providers[0] || null,
     selProject: () => data.projects.find(p => p.id === state.selectedProject) || data.projects[0] || null,
+    switchProvider: (id) => switchProviderSetting(id, { renderSettingsTab, updateFooter, populateModelDropdown }),
     switchIdentity: (id) => switchIdentitySetting(id, { settingsBody, renderSettingsTab, updateFooter, populateIdentitiesSubmenu }),
     claudeSetupState, updateClaudeSetupState: (v) => Object.assign(claudeSetupState, v),
     showSetupBanner: (result) => import("./setup.js").then(m => m.showSetupBanner(result)),
@@ -466,14 +501,15 @@ export function initApp() {
     validateActiveSession, recoverMissingSession,
     promptWithAttachments, addAttachments,
     setAttachedFiles, setRunTimeline, setRunTouchedFiles, setLastTimelineKey,
-    startReplayRun, finishReplayRun, openReplayPanel, loadPlugins,
+    startReplayRun, finishReplayRun, getLatestReplaySnapshot, openReplayPanel, loadPlugins,
     compactPath: (path) => { const text = String(path || ""); if (!text) return "--"; if (text.length <= 42) return text; return `${text.slice(0, 18)}...${text.slice(-20)}`; },
     timelineFromClaudeEvent,
     updatePermDropdown: (pm) => {
       const addDropdown = $("#addMenu");
       if (addDropdown) addDropdown.querySelectorAll(".add-option").forEach(opt => { opt.classList.toggle("is-active", opt.dataset.action === pm); });
     },
-    newChat, openSettings, openHelp,
+    newChat, openSettings, openHelp, openTeamsBuilder, openWorkspaceWindow,
+    toggleTheme,
     exportConversation,
   });
 
@@ -491,7 +527,7 @@ export function initApp() {
   });
 
   configureSlashCommands({
-    newChat, setPerm, openSettings, openHelp,
+    newChat, setPerm, openSettings, openHelp, openTeamsBuilder,
     toggleTheme, autosize: () => autosize(),
     exportConversation, openReplayPanel, openWorkspaceWindow,
   });

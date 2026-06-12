@@ -2,7 +2,7 @@ const SK = "ccs-v6";
 
 export const data = {
   providers: [], skills: [], mcp: [], projects: [], plugins: [], teams: [],
-  agentTasks: [], automations: [], usage: null, runners: [], diagnostics: null,
+  agentTasks: [], automations: [], usage: null, runners: [], agentRuntimes: [], diagnostics: null,
   identities: [], categorizedSkills: null, categoryInfo: {}, selectedCategory: "all",
   loadErrors: {},
 };
@@ -10,11 +10,14 @@ export const data = {
 function defaults() {
   return {
     panel: "providers", cwd: "", claudePath: "", mode: "normal",
-    permissionMode: "auto", runnerStrategy: "strict", messages: [],
+    permissionMode: "auto", runnerStrategy: "strict", agentRuntimeId: "studio-agent", messages: [],
+    agentRuntimeConfigs: {}, customAgentRuntimes: [],
+    studioProfiles: [], activeStudioProfileId: "",
     selectedProject: "", selectedSession: "", selectedSessionPath: "",
     clientSessionKey: crypto.randomUUID(), pendingPlanPrompt: "",
     searchTerm: "", sessionMeta: {}, priceTable: {}, defaultCwd: "", customProjects: [], teamRuns: {},
-    density: "default", diagnosticsLog: [], sidebarOpen: true, contextOpen: true, firstRunDone: false,
+    density: "default", diagnosticsLog: [], sidebarOpen: true, contextOpen: false, contextAutoShielded: false, firstRunDone: false,
+    onboardingChecklistCollapsed: false,
     teamConnectFrom: "",
   };
 }

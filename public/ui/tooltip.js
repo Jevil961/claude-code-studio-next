@@ -5,6 +5,10 @@ let showTimer = null;
 let hideTimer = null;
 let currentTarget = null;
 
+function closestTipTarget(target) {
+  return target?.closest?.('[data-tip]') || null;
+}
+
 function createTipEl() {
   if (tipEl) return;
   tipEl = document.createElement('div');
@@ -50,6 +54,9 @@ function positionTip(target, pos) {
 }
 
 function showTip(target) {
+  if (!target?.isConnected || target.getAttribute('aria-hidden') === 'true') return;
+  const style = window.getComputedStyle(target);
+  if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0' || style.pointerEvents === 'none') return;
   const text = target.getAttribute('data-tip');
   if (!text) return;
   createTipEl();
@@ -67,14 +74,14 @@ function hideTip() {
 
 export function initTooltip() {
   document.addEventListener('mouseenter', (e) => {
-    const target = e.target.closest('[data-tip]');
+    const target = closestTipTarget(e.target);
     if (!target) return;
     clearTimeout(hideTimer);
     showTimer = setTimeout(() => showTip(target), 300);
   }, true);
 
   document.addEventListener('mouseleave', (e) => {
-    const target = e.target.closest('[data-tip]');
+    const target = closestTipTarget(e.target);
     if (!target) return;
     clearTimeout(showTimer);
     hideTimer = setTimeout(hideTip, 100);
