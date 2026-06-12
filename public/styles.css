@@ -5316,9 +5316,11 @@ body {
 .provider-inline-result {
   color: var(--td-text-color-secondary);
   font-size: 12px;
+  min-width: min(260px, 100%);
 }
 
 .provider-inline-result.is-ok { color: #a8d9bd; }
+.provider-inline-result.is-warn { color: #ffd89a; }
 .provider-inline-result.is-error { color: #ffb4b4; }
 
 .msg-run-summary {

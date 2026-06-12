@@ -247,10 +247,24 @@ const handlers = {
   planAgentTaskQueue: () => ok(agentTasks.planAgentTaskQueue()),
   exportAgentTaskAudit: (taskId, format) => ok(agentTasks.exportAgentTaskAudit(taskId, format)),
   getProviderPresets: () => ok({ presets: PROVIDER_PRESETS, apiFormats: API_FORMATS }),
-  fetchModels: (opts = {}) => wrapped(() => {
+  fetchModels: (opts = {}) => withDb(async () => {
     const preset = PROVIDER_PRESETS.find(p => p.id === opts.presetId || p.baseUrl === opts.baseUrl || p.name === opts.name);
-    const models = preset ? [...(preset.models || []), ...(preset.altFormat?.models || [])] : [];
-    return { models, source: preset ? "preset" : "empty" };
+    const fallbackModels = preset ? [...(preset.models || []), ...(preset.altFormat?.models || [])] : [];
+    const target = {
+      ...opts,
+      name: opts.name || preset?.name || "Provider",
+      baseUrl: opts.baseUrl || preset?.baseUrl || "",
+      apiFormat: opts.apiFormat || preset?.apiFormat || "openai",
+    };
+    const remote = await providers.fetchModels(target);
+    if (remote.ok) return remote;
+    return {
+      ...remote,
+      models: fallbackModels,
+      modelCount: fallbackModels.length,
+      source: fallbackModels.length ? "preset-fallback" : remote.source,
+      fallback: Boolean(fallbackModels.length),
+    };
   }),
   runClaude: async (payload = {}) => {
     if (!payload.prompt?.trim()) return fail("Empty prompt");
