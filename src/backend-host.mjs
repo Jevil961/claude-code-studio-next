@@ -235,6 +235,7 @@ const handlers = {
   deleteTeamStep: (teamId, stepId) => ok(teams.deleteTeamStep(teamId, stepId)),
   updateTeamWorkflow: (teamId, updates) => ok(teams.updateTeamWorkflow(teamId, updates)),
   composeTeamStepPrompt: (payload) => ok(teams.composeTeamStepPrompt(payload)),
+  composeTeamPlanningPrompt: (payload) => ok(teams.composeTeamPlanningPrompt(payload)),
   listAgentTasks: () => ok(agentTasks.listAgentTasks()),
   createAgentTask: (data) => ok(agentTasks.createAgentTask(data)),
   createAgentTaskBatch: (data) => ok(agentTasks.createAgentTaskBatch(data)),

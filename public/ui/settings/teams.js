@@ -1,10 +1,10 @@
 import { data, save, state } from "../state.js";
 import { safeBridge } from "../bridge.js";
 import { toast } from "../helpers.js";
-import { runStepAsync, isRunning as claudeIsRunning } from "../chat-engine.js";
+import { runStepAsync, isRunning as claudeIsRunning, getAssistantBuffer } from "../chat-engine.js";
 import { showConfirm, showModal } from "../modal.js";
 import { escapeHtml } from "../../markdown.js";
-import { loadIdentities, loadProviders, loadTeams } from "../data-loader.js";
+import { loadAgentRuntimes, loadIdentities, loadProviders, loadTeams } from "../data-loader.js";
 
 const NODE_W = 200;
 const NODE_H = 80;
@@ -28,6 +28,12 @@ const COMPONENTS = [
   { type: "review", name: "测试判断", icon: "QA", instruction: "检查结果，输出 DECISION: pass/revise", color: "#f59e0b" },
   { type: "approval", name: "审核判断", icon: "OK", instruction: "审核是否可交付，输出 DECISION", color: "#a855f7" },
   { type: "final", name: "输出结果", icon: "OUT", instruction: "形成给用户的最终结果或交付摘要", color: "#10b981" },
+];
+
+const TEAM_RUN_MODES = [
+  { id: "workflow", label: "执行", tag: "Flow", placeholder: "输入任务描述..." },
+  { id: "plan", label: "计划", tag: "Plan", placeholder: "输入任务，让 Team 先产出计划..." },
+  { id: "goal", label: "目标", tag: "Goal", placeholder: "输入目标下的具体任务..." },
 ];
 
 function selectedTeam() {
@@ -145,6 +151,48 @@ function summarizeText(text, max = 180) {
   return oneLine.length > max ? `${oneLine.slice(0, max)}...` : oneLine;
 }
 
+function normalizeAuditEvents(events = []) {
+  if (!Array.isArray(events)) return [];
+  return events.slice(0, 240).map(event => {
+    if (typeof event === "string") return { type: "note", title: summarizeText(event, 120), detail: summarizeText(event, 1000) };
+    const paths = Array.isArray(event?.paths)
+      ? event.paths.map(item => String(item || "").trim()).filter(Boolean).slice(0, 20)
+      : [];
+    return {
+      type: String(event?.type || "event").slice(0, 60),
+      title: summarizeText(event?.title || event?.tool || event?.name || event?.type || "event", 120),
+      detail: summarizeText(event?.detail || event?.message || event?.summary || event?.input || event?.output || "", 1000),
+      tool: String(event?.tool || event?.toolName || "").slice(0, 120),
+      ok: event?.ok === undefined ? undefined : Boolean(event.ok),
+      durationMs: Number.isFinite(Number(event?.durationMs)) ? Number(event.durationMs) : undefined,
+      at: Number.isFinite(Number(event?.at || event?.timestamp)) ? Number(event.at || event.timestamp) : 0,
+      paths,
+    };
+  }).filter(event => event.title || event.detail || event.tool || event.paths.length);
+}
+
+function normalizeChangedFiles(files = []) {
+  if (!Array.isArray(files)) return [];
+  const seen = new Set();
+  return files.map(file => String(typeof file === "string" ? file : file?.path || file?.file || file?.name || "").trim())
+    .filter(path => {
+      if (!path || seen.has(path)) return false;
+      seen.add(path);
+      return true;
+    })
+    .slice(0, 120);
+}
+
+function stepAuditFields(result = {}) {
+  const replay = result.replay && typeof result.replay === "object" ? result.replay : {};
+  return {
+    auditEvents: normalizeAuditEvents(result.auditEvents || replay.events),
+    changedFiles: normalizeChangedFiles(result.changedFiles || replay.touchedFiles),
+    errorCategory: summarizeText(result.errorCategory || result.category || result.code || "", 120),
+    stderrPreview: summarizeText(result.stderrPreview || result.stderr || "", 1200),
+  };
+}
+
 function compactPath(path) {
   const text = String(path || "");
   if (!text) return "--";
@@ -173,18 +221,81 @@ function identityName(identityId) {
   return data.identities.find(identity => identity.id === identityId)?.name || "未绑定 Skills 身份";
 }
 
+function normalizeTeamRunMode(value) {
+  return TEAM_RUN_MODES.some(mode => mode.id === value) ? value : "workflow";
+}
+
+function teamRunModeOptions(value = "workflow") {
+  const current = normalizeTeamRunMode(value);
+  return TEAM_RUN_MODES.map(mode => ({ value: mode.id, label: mode.label, selected: mode.id === current }));
+}
+
+function effectiveTeamRunMode(team, run = null) {
+  return normalizeTeamRunMode(run?.mode || team?.runMode || "workflow");
+}
+
+function teamRunModeLabel(mode) {
+  return TEAM_RUN_MODES.find(item => item.id === normalizeTeamRunMode(mode))?.label || "执行";
+}
+
+function teamGoalText(team, run) {
+  return String(run?.goal || team?.goal || run?.task || "").trim();
+}
+
+function teamSuccessCriteriaText(team, run) {
+  return String(run?.successCriteria || team?.successCriteria || "").trim();
+}
+
+function teamPlanText(run) {
+  return String(run?.plan || run?.planOutput || "").trim();
+}
+
+function buildTeamRunContext(team, run) {
+  return {
+    mode: effectiveTeamRunMode(team, run),
+    goal: teamGoalText(team, run),
+    successCriteria: teamSuccessCriteriaText(team, run),
+    plan: teamPlanText(run),
+    planningRules: team?.planningRules || "",
+  };
+}
+
 function effectiveTeamPermissionMode(member) {
-  return member?.permissionMode === "bypass" ? "bypass" : "auto";
+  return ["plan", "bypass"].includes(member?.permissionMode) ? member.permissionMode : "auto";
 }
 
 function runState(teamId) {
   state.teamRuns ||= {};
-  state.teamRuns[teamId] ||= { task: "", currentStepId: "", outputs: {}, completed: false, updatedAt: Date.now(), running: false, stepHistory: [], error: "", conversation: [] };
+  state.teamRuns[teamId] ||= {
+    task: "",
+    mode: "",
+    goal: "",
+    successCriteria: "",
+    plan: "",
+    planOutput: "",
+    planAccepted: false,
+    phase: "",
+    currentStepId: "",
+    outputs: {},
+    completed: false,
+    updatedAt: Date.now(),
+    running: false,
+    stepHistory: [],
+    error: "",
+    conversation: [],
+  };
   const run = state.teamRuns[teamId];
   run.running ??= false;
   run.stepHistory ??= [];
   run.conversation ??= [];
   run.error ??= "";
+  run.mode = run.mode ? normalizeTeamRunMode(run.mode) : "";
+  run.goal ??= "";
+  run.successCriteria ??= "";
+  run.plan ??= "";
+  run.planOutput ??= "";
+  run.planAccepted ??= false;
+  run.phase ??= "";
   return run;
 }
 
@@ -212,6 +323,24 @@ function identityOptions(value = "") {
   ].map(option => ({ ...option, selected: option.value === value }));
 }
 
+function runtimeOptions(value = "") {
+  const runtimes = (data.agentRuntimes || []).length
+    ? data.agentRuntimes
+    : [{ id: "studio-agent", name: "Studio Agent", available: true }];
+  return [
+    { value: "", label: "使用当前 Agent Runtime" },
+    ...runtimes.map(runtime => ({
+      value: runtime.id,
+      label: `${runtime.name || runtime.id}${runtime.available === false ? " (not detected)" : ""}`,
+    })),
+  ].map(option => ({ ...option, selected: option.value === value }));
+}
+
+function runtimeName(runtimeId = "") {
+  if (!runtimeId) return "";
+  return (data.agentRuntimes || []).find(runtime => runtime.id === runtimeId)?.name || runtimeId;
+}
+
 function memberOptions(team, value = "") {
   return [
     { value: "", label: "未绑定身份" },
@@ -224,7 +353,7 @@ function stepOptions(team, value = "") {
 }
 
 async function refresh(renderSettingsTab) {
-  await Promise.allSettled([loadTeams(), loadProviders(), loadIdentities()]);
+  await Promise.allSettled([loadTeams(), loadProviders(), loadIdentities(), loadAgentRuntimes()]);
   renderSettingsTab();
 }
 
@@ -278,7 +407,11 @@ async function executeStep(team, step, run, deps) {
   await switchMemberContext(member, deps);
 
   const r = await safeBridge("composeTeamStepPrompt", null, {
-    teamId: team.id, stepId: step.id, task: run.task, previousOutputs: run.outputs || {},
+    teamId: team.id,
+    stepId: step.id,
+    task: run.task,
+    previousOutputs: run.outputs || {},
+    teamRunContext: buildTeamRunContext(team, run),
   });
   if (!r.ok || !r.data?.prompt) {
     throw new Error(r.error || "生成节点提示词失败");
@@ -287,6 +420,7 @@ async function executeStep(team, step, run, deps) {
   const result = await runStepAsync(r.data.prompt, {
     providerId: member?.providerId || "",
     permissionMode: effectiveTeamPermissionMode(member),
+    agentRuntimeId: member?.agentRuntimeId || "",
     cwd: team.cwd || state.cwd,
   });
   const durationMs = Date.now() - startedAt;
@@ -306,6 +440,8 @@ async function executeStep(team, step, run, deps) {
       providerName: provider?.name || "",
       model: provider?.model || "",
       identityName: identity?.name || "",
+      agentRuntimeId: member?.agentRuntimeId || state.agentRuntimeId || "studio-agent",
+      agentRuntimeName: runtimeName(member?.agentRuntimeId || state.agentRuntimeId || "studio-agent"),
     });
   }
 
@@ -318,6 +454,8 @@ async function executeStep(team, step, run, deps) {
     member,
     provider,
     identity,
+    agentRuntimeId: member?.agentRuntimeId || state.agentRuntimeId || "studio-agent",
+    agentRuntimeName: runtimeName(member?.agentRuntimeId || state.agentRuntimeId || "studio-agent"),
     cwd: team.cwd || state.cwd,
   };
 }
@@ -337,7 +475,11 @@ async function runSingleIdentityChat(team, step, member, message, run, deps) {
 
     // Build a simple prompt for single identity
     const r = await safeBridge("composeTeamStepPrompt", null, {
-      teamId: team.id, stepId: step.id, task: message, previousOutputs: run.outputs || {},
+      teamId: team.id,
+      stepId: step.id,
+      task: message,
+      previousOutputs: run.outputs || {},
+      teamRunContext: buildTeamRunContext(team, run),
     });
     if (!r.ok || !r.data?.prompt) {
       throw new Error(r.error || "生成提示词失败");
@@ -346,6 +488,7 @@ async function runSingleIdentityChat(team, step, member, message, run, deps) {
     const result = await runStepAsync(r.data.prompt, {
       providerId: member?.providerId || "",
       permissionMode: effectiveTeamPermissionMode(member),
+      agentRuntimeId: member?.agentRuntimeId || "",
       cwd: team.cwd || state.cwd,
     });
 
@@ -372,7 +515,172 @@ async function runSingleIdentityChat(team, step, member, message, run, deps) {
   deps.renderSettingsTab?.();
 }
 
-async function runWorkflow(team, startStepId, task, deps) {
+function planningMember(team) {
+  const entry = stepById(team, team.entryStepId) || team.workflow[0] || null;
+  const firstWorkStep = entry?.nodeType === "start" ? nextSteps(team, entry.id)[0] : entry;
+  return memberById(team, firstWorkStep?.memberId || "") || team.members[0] || null;
+}
+
+async function runTeamPlanning(team, task, run, deps, options = {}) {
+  if (run.running) { toast("Team 正在运行中", "error"); return false; }
+  const reset = options.reset !== false;
+  const accept = options.accept === true;
+  const completeAfterPlan = options.completeAfterPlan === true;
+  const planner = planningMember(team);
+  const startedAt = Date.now();
+
+  if (reset) {
+    run.runId = crypto.randomUUID();
+    run.startedAt = startedAt;
+    run.completedAt = 0;
+    run.outputs = {};
+    run.stepHistory = [];
+    run.conversation = [];
+  } else {
+    run.runId ||= crypto.randomUUID();
+    run.startedAt ||= startedAt;
+  }
+  run.task = task || run.task || "";
+  run.goal = teamGoalText(team, run) || run.task;
+  run.successCriteria = teamSuccessCriteriaText(team, run);
+  run.plan = accept ? run.plan : "";
+  run.planAccepted = false;
+  run.completed = false;
+  run.error = "";
+  run.paused = false;
+  run.pausedStepId = "";
+  run.phase = "planning";
+  run.currentStepId = "";
+  run.running = true;
+  run.updatedAt = Date.now();
+  save();
+  deps.renderSettingsTab?.();
+
+  try {
+    await switchMemberContext(planner, deps);
+    const r = await safeBridge("composeTeamPlanningPrompt", null, {
+      teamId: team.id,
+      task: run.task,
+      goal: run.goal,
+      successCriteria: run.successCriteria,
+    });
+    if (!r.ok || !r.data?.prompt) throw new Error(r.error || "生成团队计划提示词失败");
+
+    const result = await runStepAsync(r.data.prompt, {
+      providerId: planner?.providerId || "",
+      permissionMode: "plan",
+      agentRuntimeId: planner?.agentRuntimeId || "",
+      cwd: team.cwd || state.cwd,
+    });
+    const durationMs = Date.now() - startedAt;
+    const provider = planner?.providerId ? data.providers.find(item => item.id === planner.providerId) : data.providers.find(item => item.current) || data.providers[0] || null;
+    const identity = planner?.identityId ? data.identities.find(item => item.id === planner.identityId) : data.identities.find(item => item.active) || null;
+    const output = result.output || "";
+    const historyItem = {
+      id: crypto.randomUUID(),
+      runId: run.runId,
+      stepId: "__team_plan",
+      stepName: "团队计划",
+      memberId: planner?.id || "",
+      memberName: planner?.name || "Planner",
+      status: result.ok ? "done" : "error",
+      output,
+      outputPreview: summarizeText(output || result.error, 260),
+      error: result.ok ? "" : result.error || "团队计划生成失败",
+      decision: "",
+      prompt: r.data.prompt,
+      durationMs,
+      providerName: provider?.name || "",
+      model: provider?.model || "",
+      identityName: identity?.name || "",
+      agentRuntimeId: planner?.agentRuntimeId || state.agentRuntimeId || "studio-agent",
+      agentRuntimeName: runtimeName(planner?.agentRuntimeId || state.agentRuntimeId || "studio-agent"),
+      cwd: team.cwd || state.cwd,
+      startedAt,
+      timestamp: Date.now(),
+      ...stepAuditFields(result),
+    };
+    run.stepHistory.push(historyItem);
+    run.conversation.push({
+      stepId: "__team_plan",
+      stepName: "团队计划",
+      memberId: planner?.id || "",
+      memberName: planner?.name || "Planner",
+      prompt: r.data.prompt,
+      output,
+      timestamp: Date.now(),
+      durationMs,
+      providerName: provider?.name || "",
+      model: provider?.model || "",
+      identityName: identity?.name || "",
+      agentRuntimeId: planner?.agentRuntimeId || state.agentRuntimeId || "studio-agent",
+      agentRuntimeName: runtimeName(planner?.agentRuntimeId || state.agentRuntimeId || "studio-agent"),
+    });
+
+    if (!result.ok) throw new Error(result.error || "团队计划生成失败");
+    run.planOutput = output;
+    if (accept) {
+      run.plan = output;
+      run.planAccepted = true;
+    }
+    run.completed = completeAfterPlan;
+    if (completeAfterPlan) run.completedAt = Date.now();
+    toast(accept ? "团队计划已采纳" : "团队计划已生成", "success");
+    return true;
+  } catch (err) {
+    run.error = String(err.message || err);
+    run.completed = false;
+    run.completedAt = Date.now();
+    toast(`团队计划中断：${run.error}`, "error");
+    return false;
+  } finally {
+    run.running = false;
+    run.phase = "";
+    run.updatedAt = Date.now();
+    save();
+    deps.renderSettingsTab?.();
+  }
+}
+
+async function startTeamRun(team, task, deps) {
+  const run = runState(team.id);
+  const normalizedTask = String(task || "").trim();
+  if (!normalizedTask) { toast("请先输入任务", "error"); return; }
+  const mode = effectiveTeamRunMode(team, run);
+  run.task = normalizedTask;
+  run.mode = mode;
+  if (mode === "plan") {
+    await runTeamPlanning(team, normalizedTask, run, deps, { reset: true, completeAfterPlan: true });
+    return;
+  }
+
+  const entry = stepById(team, team.entryStepId) || team.workflow[0];
+  if (!entry) { toast("请先添加入口节点", "error"); return; }
+  if (mode === "goal") {
+    const planned = await runTeamPlanning(team, normalizedTask, run, deps, { reset: true, accept: true, completeAfterPlan: false });
+    if (!planned) return;
+    await runWorkflow(team, entry.id, normalizedTask, deps, { preservePlan: true });
+    return;
+  }
+  await runWorkflow(team, entry.id, normalizedTask, deps);
+}
+
+async function acceptPlanAndRun(team, deps) {
+  const run = runState(team.id);
+  if (!run.planOutput?.trim()) { toast("还没有可采用的团队计划", "error"); return; }
+  const entry = stepById(team, team.entryStepId) || team.workflow[0];
+  if (!entry) { toast("请先添加入口节点", "error"); return; }
+  run.mode = "goal";
+  run.plan = run.planOutput;
+  run.planAccepted = true;
+  run.completed = false;
+  run.error = "";
+  run.updatedAt = Date.now();
+  save();
+  await runWorkflow(team, entry.id, run.task || run.goal || team.goal || run.planOutput, deps, { preservePlan: true });
+}
+
+async function runWorkflow(team, startStepId, task, deps, options = {}) {
   const run = runState(team.id);
   if (run.running) { toast("工作流正在运行中", "error"); return; }
   const startStep = stepById(team, startStepId);
@@ -381,14 +689,15 @@ async function runWorkflow(team, startStepId, task, deps) {
 
   run.running = true;
   run.error = "";
-  run.runId = crypto.randomUUID();
-  run.startedAt = Date.now();
+  if (!options.preservePlan || !run.runId) run.runId = crypto.randomUUID();
+  run.startedAt = options.preservePlan && run.startedAt ? run.startedAt : Date.now();
   run.completedAt = 0;
-  run.outputs = run.outputs || {};
-  run.stepHistory = [];
-  run.conversation = [];
+  run.outputs = {};
+  run.stepHistory = options.preservePlan ? (run.stepHistory || []).filter(item => item.stepId === "__team_plan") : [];
+  run.conversation = options.preservePlan ? (run.conversation || []).filter(item => item.stepId === "__team_plan") : [];
   run.completed = false;
   run.currentStepId = startStepId;
+  run.phase = "workflow";
   run.updatedAt = Date.now();
   save();
   deps.renderSettingsTab?.();
@@ -439,9 +748,12 @@ async function runWorkflow(team, startStepId, task, deps) {
           providerName: result.provider?.name || "",
           model: result.provider?.model || "",
           identityName: result.identity?.name || "",
+          agentRuntimeId: result.agentRuntimeId || "",
+          agentRuntimeName: result.agentRuntimeName || runtimeName(result.agentRuntimeId || ""),
           cwd: result.cwd || "",
           startedAt: result.startedAt || Date.now(),
           timestamp: Date.now(),
+          ...stepAuditFields(result),
         });
         throw new Error(result.error || `步骤 "${currentStep.name}" 执行失败`);
       }
@@ -463,9 +775,12 @@ async function runWorkflow(team, startStepId, task, deps) {
         providerName: result.provider?.name || "",
         model: result.provider?.model || "",
         identityName: result.identity?.name || "",
+        agentRuntimeId: result.agentRuntimeId || "",
+        agentRuntimeName: result.agentRuntimeName || runtimeName(result.agentRuntimeId || ""),
         cwd: result.cwd || "",
         startedAt: result.startedAt || Date.now(),
         timestamp: Date.now(),
+        ...stepAuditFields(result),
       };
       run.stepHistory.push(historyItem);
       run.updatedAt = Date.now();
@@ -506,11 +821,14 @@ async function runWorkflow(team, startStepId, task, deps) {
     }
   } catch (err) {
     run.error = String(err.message || err);
+    run.paused = true;
+    run.pausedStepId = currentStep?.id || "";
     toast(`工作流中断：${run.error}`, "error");
   }
 
   run.running = false;
-  run.completedAt = Date.now();
+  run.phase = "";
+  if (!run.paused) run.completedAt = Date.now();
   run.updatedAt = Date.now();
   save();
   deps.renderSettingsTab?.();
@@ -524,13 +842,173 @@ function stopWorkflow(teamId) {
   const run = runState(teamId);
   run.running = false;
   run.error = "用户手动停止";
+  run.paused = false;
+  run.pausedStepId = "";
+  run.phase = "";
   run.completedAt = Date.now();
   run.updatedAt = Date.now();
   save();
-  // Stop the current Claude run
   const bridge = document.querySelector("#runStopBtn");
   bridge?.click();
   toast("工作流已停止", "info");
+}
+
+async function retryStep(team, deps) {
+  const run = runState(team.id);
+  if (!run.paused || !run.pausedStepId) return;
+  const step = stepById(team, run.pausedStepId);
+  if (!step) { toast("找不到失败的步骤", "error"); return; }
+
+  // Remove the error entry from stepHistory for this step
+  run.stepHistory = (run.stepHistory || []).filter(h => !(h.stepId === step.id && h.status === "error"));
+  run.error = "";
+  run.paused = false;
+  run.pausedStepId = "";
+  run.running = true;
+  run.phase = "workflow";
+  run.updatedAt = Date.now();
+  save();
+  deps.renderSettingsTab?.();
+
+  toast(`重试：${step.name}`, "info");
+  const result = await executeStep(team, step, run, deps);
+
+  if (!result.ok) {
+    run.stepHistory.push({
+      id: crypto.randomUUID(), runId: run.runId, stepId: step.id, memberId: step.memberId,
+      status: "error", error: result.error || `步骤 "${step.name}" 执行失败`,
+      decision: "", output: result.output || "", outputPreview: summarizeText(result.output || result.error, 220),
+      prompt: result.prompt || "", durationMs: result.durationMs || 0,
+      providerName: result.provider?.name || "", model: result.provider?.model || "",
+      identityName: result.identity?.name || "", cwd: result.cwd || "",
+      agentRuntimeId: result.agentRuntimeId || "", agentRuntimeName: result.agentRuntimeName || runtimeName(result.agentRuntimeId || ""),
+      startedAt: result.startedAt || Date.now(), timestamp: Date.now(),
+      ...stepAuditFields(result),
+    });
+    run.running = false;
+    run.phase = "";
+    run.error = result.error || `步骤 "${step.name}" 执行失败`;
+    run.paused = true;
+    run.pausedStepId = step.id;
+    run.updatedAt = Date.now();
+    save();
+    deps.renderSettingsTab?.();
+    toast(`重试失败：${run.error}`, "error");
+    return;
+  }
+
+  // Success — continue workflow from next step
+  const output = result.output || "";
+  run.outputs[step.id] = output;
+  const decision = decisionFromText(output);
+  run.stepHistory.push({
+    id: crypto.randomUUID(), runId: run.runId, stepId: step.id, memberId: step.memberId,
+    status: "done", output, outputPreview: summarizeText(output, 220), decision,
+    prompt: result.prompt || "", durationMs: result.durationMs || 0,
+    providerName: result.provider?.name || "", model: result.provider?.model || "",
+    identityName: result.identity?.name || "", cwd: result.cwd || "",
+    agentRuntimeId: result.agentRuntimeId || "", agentRuntimeName: result.agentRuntimeName || runtimeName(result.agentRuntimeId || ""),
+    startedAt: result.startedAt || Date.now(), timestamp: Date.now(),
+    ...stepAuditFields(result),
+  });
+
+  // Continue the workflow from the next step
+  const next = resolveNextStep(team, step, output);
+  if (!next || next.needsChoice) {
+    run.running = false;
+    run.phase = "";
+    run.completed = !next;
+    run.completedAt = Date.now();
+    run.updatedAt = Date.now();
+    save();
+    deps.renderSettingsTab?.();
+    toast(next ? "需要手动选择下一步" : "工作流已完成", next ? "info" : "success");
+    return;
+  }
+
+  // Resume the workflow loop from next step
+  run.currentStepId = next.step.id;
+  run.updatedAt = Date.now();
+  save();
+  deps.renderSettingsTab?.();
+
+  // Re-enter runWorkflow from the next step
+  await resumeWorkflow(team, next.step, run, deps);
+}
+
+async function resumeWorkflow(team, startStep, run, deps) {
+  let currentStep = startStep;
+  let executedSteps = (run.stepHistory || []).length;
+  const MAX_WORKFLOW_STEPS = 24;
+  run.phase = "workflow";
+
+  try {
+    while (currentStep && run.running) {
+      if (executedSteps > MAX_WORKFLOW_STEPS) throw new Error("超过最大步骤限制");
+      if (currentStep.nodeType === "start") {
+        const edges = workflowEdges(team).filter(e => e.from === currentStep.id);
+        currentStep = edges.length ? stepById(team, edges[0].to) : null;
+        continue;
+      }
+      run.currentStepId = currentStep.id;
+      run.updatedAt = Date.now();
+      save();
+      deps.renderSettingsTab?.();
+      toast(`正在执行：${currentStep.name}`, "info");
+
+      const result = await executeStep(team, currentStep, run, deps);
+      if (!result.ok) {
+        run.stepHistory.push({
+          id: crypto.randomUUID(), runId: run.runId, stepId: currentStep.id, memberId: currentStep.memberId,
+          status: "error", error: result.error, decision: "", output: result.output || "",
+          outputPreview: summarizeText(result.output || result.error, 220), prompt: result.prompt || "",
+          durationMs: result.durationMs || 0, providerName: result.provider?.name || "",
+          model: result.provider?.model || "", identityName: result.identity?.name || "",
+          agentRuntimeId: result.agentRuntimeId || "", agentRuntimeName: result.agentRuntimeName || runtimeName(result.agentRuntimeId || ""),
+          cwd: result.cwd || "", startedAt: result.startedAt || Date.now(), timestamp: Date.now(),
+          ...stepAuditFields(result),
+        });
+        throw new Error(result.error);
+      }
+
+      const output = result.output || "";
+      run.outputs[currentStep.id] = output;
+      const decision = decisionFromText(output);
+      run.stepHistory.push({
+        id: crypto.randomUUID(), runId: run.runId, stepId: currentStep.id, memberId: currentStep.memberId,
+        status: "done", output, outputPreview: summarizeText(output, 220), decision,
+        prompt: result.prompt || "", durationMs: result.durationMs || 0,
+        providerName: result.provider?.name || "", model: result.provider?.model || "",
+        identityName: result.identity?.name || "", cwd: result.cwd || "",
+        agentRuntimeId: result.agentRuntimeId || "", agentRuntimeName: result.agentRuntimeName || runtimeName(result.agentRuntimeId || ""),
+        startedAt: result.startedAt || Date.now(), timestamp: Date.now(),
+        ...stepAuditFields(result),
+      });
+      executedSteps++;
+
+      const next = resolveNextStep(team, currentStep, output);
+      if (!next) { run.completed = true; break; }
+      if (next.needsChoice) break;
+      if (currentStep.requiresApproval) {
+        const ok = await showConfirm("步骤审核", `「${currentStep.name}」已完成，是否继续？`);
+        if (!ok) { run.error = "用户中止审核"; break; }
+      }
+      currentStep = next.step;
+    }
+  } catch (err) {
+    run.error = String(err.message || err);
+    run.paused = true;
+    run.pausedStepId = currentStep?.id || "";
+    toast(`工作流中断：${run.error}`, "error");
+  }
+
+  run.running = false;
+  run.phase = "";
+  if (!run.paused) run.completedAt = Date.now();
+  run.updatedAt = Date.now();
+  save();
+  deps.renderSettingsTab?.();
+  if (run.completed) toast("工作流已完成", "success");
 }
 
 function setPrompt(text) {
@@ -586,6 +1064,7 @@ async function prepareNode(team, step, deps) {
     stepId: step.id,
     task,
     previousOutputs: run.outputs || {},
+    teamRunContext: buildTeamRunContext(team, run),
   });
   if (!r.ok || !r.data?.prompt) {
     toast(r.error || "生成节点提示词失败", "error");
@@ -655,6 +1134,12 @@ async function acceptAndHandoff(team, deps) {
 async function resetRun(team, renderSettingsTab) {
   const run = runState(team.id);
   run.task = "";
+  run.goal = "";
+  run.successCriteria = "";
+  run.plan = "";
+  run.planOutput = "";
+  run.planAccepted = false;
+  run.phase = "";
   run.currentStepId = team.entryStepId || team.workflow[0]?.id || "";
   run.outputs = {};
   run.stepHistory = [];
@@ -675,7 +1160,11 @@ async function createTeamDlg(renderSettingsTab) {
     { key: "name", label: "名称", value: "WorkBuddy Team" },
     { key: "description", label: "描述", value: "", type: "textarea" },
     { key: "cwd", label: "项目路径", value: state.cwd || "", placeholder: "留空使用全局项目路径" },
+    { key: "runMode", label: "默认模式", type: "select", value: "workflow", options: teamRunModeOptions("workflow") },
+    { key: "goal", label: "团队目标", value: "", type: "textarea", placeholder: "这个 Team 长期负责什么结果" },
+    { key: "successCriteria", label: "验收标准", value: "", type: "textarea", placeholder: "达到什么条件才算完成" },
     { key: "rules", label: "团队规则", value: "", type: "textarea", placeholder: "所有身份共同遵守的规则、交接标准、最终输出标准" },
+    { key: "planningRules", label: "计划规则", value: "", type: "textarea", placeholder: "计划阶段必须考虑的约束、风险和验证方式" },
   ]);
   if (!result?.name?.trim()) return;
   const r = await safeBridge("createTeam", null, result);
@@ -691,6 +1180,10 @@ async function createPmDevQaTemplate(renderSettingsTab) {
   const teamResult = await safeBridge("createTeam", null, {
     name: "PM-Dev-QA Loop",
     description: "项目经理澄清需求，开发实现，测试循环验收，最终由项目经理审核后交付。",
+    runMode: "goal",
+    goal: "把用户问题转成可实现、可测试、可交付的结果。",
+    successCriteria: "需求清楚，开发完成，测试通过，项目经理审核同意后才输出。",
+    planningRules: "先明确目标和验收标准，再安排 PM、开发、测试的交接顺序。",
     rules: [
       "所有身份必须只处理自己职责内的事情。",
       "交接给下一身份前，要给出清楚的输入、已完成内容和剩余风险。",
@@ -802,12 +1295,105 @@ async function createPmDevQaTemplate(renderSettingsTab) {
   await refresh(renderSettingsTab);
 }
 
+async function createCodeReviewTemplate(renderSettingsTab) {
+  const teamResult = await safeBridge("createTeam", null, {
+    name: "代码审查模板",
+    description: "面向第一次体验 Teams 的轻量代码审查流：先发现风险，再整理可执行结论。",
+    runMode: "plan",
+    goal: "快速找出当前代码或变更里的具体风险，并整理成可处理结论。",
+    successCriteria: "发现有文件、行为或测试证据支撑；结论按严重程度排序；输出能直接执行。",
+    planningRules: "先界定审查范围，再分配审查和整理职责。",
+    rules: [
+      "聚焦可复现的 bug、回归风险、安全问题和测试缺口。",
+      "不要做无关重构建议；每条发现都要包含影响、位置和建议验证方式。",
+      "最终输出按严重程度排序，并明确哪些问题需要立即处理。",
+    ].join("\n"),
+  });
+  if (!teamResult.ok) {
+    toast(teamResult.error || "创建代码审查模板失败", "error");
+    return;
+  }
+  const teamId = teamResult.data.id;
+  const reviewer = await safeBridge("createTeamMember", null, teamId, {
+    name: "代码审查员",
+    icon: "REV",
+    role: "阅读当前改动和相关上下文，找出具体 bug、风险和测试缺口。",
+    rules: "只报告能落到文件、行为或测试上的问题。按严重程度排序，避免泛泛而谈。",
+    permissionMode: "auto",
+  });
+  const summarizer = await safeBridge("createTeamMember", null, teamId, {
+    name: "结论整理员",
+    icon: "SUM",
+    role: "把审查发现整理成用户可直接处理的结论和下一步。",
+    rules: "保留证据和优先级，合并重复项，最后给出建议验证命令。",
+    permissionMode: "auto",
+  });
+  if (!reviewer.ok || !summarizer.ok) {
+    toast("代码审查模板身份创建失败", "error");
+    await refresh(renderSettingsTab);
+    return;
+  }
+  const start = await safeBridge("createTeamStep", null, teamId, {
+    name: "开始",
+    nodeType: "start",
+    x: 80,
+    y: 140,
+    instruction: "接收用户的审查目标，交给代码审查员。",
+  });
+  const review = await safeBridge("createTeamStep", null, teamId, {
+    name: "审查改动",
+    nodeType: "review",
+    memberId: reviewer.data.member.id,
+    x: 320,
+    y: 140,
+    instruction: "检查当前项目或用户指定范围内的代码改动，输出具体问题、风险等级、证据和验证建议。",
+  });
+  const summary = await safeBridge("createTeamStep", null, teamId, {
+    name: "整理结论",
+    nodeType: "work",
+    memberId: summarizer.data.member.id,
+    x: 560,
+    y: 140,
+    instruction: "将审查员输出整理成清晰的用户回复：发现列表、影响、建议修复顺序和测试建议。",
+  });
+  const output = await safeBridge("createTeamStep", null, teamId, {
+    name: "输出结果",
+    nodeType: "final",
+    memberId: summarizer.data.member.id,
+    x: 800,
+    y: 140,
+    instruction: "只输出最终代码审查结论，不重复中间过程。",
+  });
+  if (!start.ok || !review.ok || !summary.ok || !output.ok) {
+    toast("代码审查模板节点创建失败", "error");
+    await refresh(renderSettingsTab);
+    return;
+  }
+  await safeBridge("updateTeamWorkflow", null, teamId, {
+    entryStepId: start.data.step.id,
+    finalStepId: output.data.step.id,
+    workflowEdges: [
+      { from: start.data.step.id, to: review.data.step.id, condition: "default", label: "开始审查" },
+      { from: review.data.step.id, to: summary.data.step.id, condition: "default", label: "交给整理" },
+      { from: summary.data.step.id, to: output.data.step.id, condition: "default", label: "输出结论" },
+    ],
+  });
+  state.selectedTeamId = teamId;
+  save();
+  toast("代码审查模板已创建", "success");
+  await refresh(renderSettingsTab);
+}
+
 async function editTeamDlg(team, renderSettingsTab) {
   const result = await showModal("编辑 Team", [
     { key: "name", label: "名称", value: team.name || "" },
     { key: "description", label: "描述", value: team.description || "", type: "textarea" },
     { key: "cwd", label: "项目路径", value: team.cwd || "", placeholder: "留空使用全局项目路径" },
+    { key: "runMode", label: "默认模式", type: "select", value: team.runMode || "workflow", options: teamRunModeOptions(team.runMode || "workflow") },
+    { key: "goal", label: "团队目标", value: team.goal || "", type: "textarea" },
+    { key: "successCriteria", label: "验收标准", value: team.successCriteria || "", type: "textarea" },
     { key: "rules", label: "团队规则", value: team.rules || "", type: "textarea" },
+    { key: "planningRules", label: "计划规则", value: team.planningRules || "", type: "textarea" },
   ]);
   if (!result) return;
   const r = await safeBridge("updateTeam", null, team.id, result);
@@ -834,8 +1420,10 @@ async function memberDlg(team, member, renderSettingsTab) {
     { key: "rules", label: "身份规则", value: member?.rules || "", type: "textarea", placeholder: "这个身份如何思考、如何交接、如何输出" },
     { key: "providerId", label: "Provider", type: "select", value: member?.providerId || "", options: providerOptions(member?.providerId || "") },
     { key: "identityId", label: "Skills 身份", type: "select", value: member?.identityId || "", options: identityOptions(member?.identityId || "") },
+    { key: "agentRuntimeId", label: "Agent Runtime", type: "select", value: member?.agentRuntimeId || "", options: runtimeOptions(member?.agentRuntimeId || "") },
     { key: "permissionMode", label: "权限模式", type: "select", value: member?.permissionMode || "auto", options: [
       { value: "auto", label: "Auto" },
+      { value: "plan", label: "Plan" },
       { value: "bypass", label: "Bypass" },
     ] },
   ]);
@@ -973,12 +1561,19 @@ function buildRunAudit(team, run) {
         name: member.name,
         providerId: member.providerId || "",
         identityId: member.identityId || "",
+        agentRuntimeId: member.agentRuntimeId || "",
+        agentRuntimeName: runtimeName(member.agentRuntimeId || ""),
         permissionMode: effectiveTeamPermissionMode(member),
       })),
     },
     run: {
       id: run.runId || "",
       task: run.task || "",
+      mode: effectiveTeamRunMode(team, run),
+      goal: teamGoalText(team, run),
+      successCriteria: teamSuccessCriteriaText(team, run),
+      planAccepted: Boolean(run.planAccepted),
+      planPreview: summarizeText(teamPlanText(run), 400),
       status: run.running ? "running" : run.completed ? "completed" : run.error ? "error" : "idle",
       error: run.error || "",
       startedAt: run.startedAt || 0,
@@ -1001,10 +1596,16 @@ function buildRunAudit(team, run) {
           providerName: item.providerName || "",
           model: item.model || "",
           identityName: item.identityName || "",
+          agentRuntimeId: item.agentRuntimeId || "",
+          agentRuntimeName: item.agentRuntimeName || runtimeName(item.agentRuntimeId || ""),
           cwd: item.cwd || "",
           durationMs: item.durationMs || 0,
           outputPreview: item.outputPreview || summarizeText(item.output, 220),
           error: item.error || "",
+          errorCategory: item.errorCategory || "",
+          stderrPreview: item.stderrPreview || "",
+          changedFiles: normalizeChangedFiles(item.changedFiles),
+          auditEvents: normalizeAuditEvents(item.auditEvents),
           timestamp: item.timestamp || 0,
         };
       }),
@@ -1017,10 +1618,14 @@ function auditToMarkdown(audit) {
     `# ${audit.team.name} Run Audit`,
     "",
     `- Status: ${audit.run.status}`,
+    `- Mode: ${audit.run.mode || "workflow"}`,
     `- Task: ${audit.run.task || "--"}`,
+    `- Goal: ${audit.run.goal || "--"}`,
+    `- Success criteria: ${audit.run.successCriteria || "--"}`,
     `- Project: ${audit.team.cwd || "--"}`,
     `- Duration: ${Math.round((audit.run.durationMs || 0) / 1000)}s`,
   ];
+  if (audit.run.planPreview) lines.push(`- Plan: ${audit.run.planPreview}`);
   if (audit.run.error) lines.push(`- Error: ${audit.run.error}`);
   lines.push("", "## Steps");
   for (const step of audit.run.steps) {
@@ -1031,12 +1636,23 @@ function auditToMarkdown(audit) {
       `- Status: ${step.status}`,
       `- Provider: ${step.providerName || "--"}${step.model ? ` / ${step.model}` : ""}`,
       `- Identity: ${step.identityName || "--"}`,
+      `- Agent Runtime: ${step.agentRuntimeName || step.agentRuntimeId || "--"}`,
       `- Duration: ${Math.round((step.durationMs || 0) / 1000)}s`,
       `- Decision: ${step.decision || "--"}`,
       `- Route: ${step.routeCondition || "--"}${step.nextStepName ? ` -> ${step.nextStepName}` : ""}`,
+      `- Changed files: ${step.changedFiles.length ? step.changedFiles.join(", ") : "--"}`,
+      `- Audit events: ${step.auditEvents.length}`,
       "",
       step.error ? `Error: ${step.error}` : (step.outputPreview || "--"),
     );
+    if (step.errorCategory) lines.push(`Error category: ${step.errorCategory}`);
+    if (step.stderrPreview) lines.push(`Stderr: ${step.stderrPreview}`);
+    for (const event of step.auditEvents.slice(0, 12)) {
+      const status = event.ok === undefined ? "" : event.ok ? " ok" : " failed";
+      const detail = event.detail ? ` - ${event.detail}` : "";
+      const paths = event.paths?.length ? ` (${event.paths.join(", ")})` : "";
+      lines.push(`- ${event.type || "event"}${status}: ${event.title || event.tool || "event"}${detail}${paths}`);
+    }
   }
   return lines.join("\n");
 }
@@ -1065,10 +1681,11 @@ function exportTeamRun(team, run, format = "json") {
 function renderTeamList({ settingsBody, renderSettingsTab }) {
   const wrap = document.createElement("div");
   wrap.className = "scard";
-  wrap.innerHTML = `<div class="scard-head"><span class="scard-title">Teams</span><div class="scard-actions"><button class="st-btn t-btn--link" id="templateTeamBtn">PM-Dev-QA 模板</button><button class="st-btn t-btn--primary t-btn--sm" id="createTeamBtn">创建 Team</button></div></div>`;
+  wrap.innerHTML = `<div class="scard-head"><span class="scard-title">Teams</span><div class="scard-actions"><button class="st-btn t-btn--link" id="reviewTemplateTeamBtn">代码审查模板</button><button class="st-btn t-btn--link" id="templateTeamBtn">PM-Dev-QA 模板</button><button class="st-btn t-btn--primary t-btn--sm" id="createTeamBtn">创建 Team</button></div></div>`;
   settingsBody.append(wrap);
   wrap.querySelector("#createTeamBtn").addEventListener("click", () => createTeamDlg(renderSettingsTab));
   wrap.querySelector("#templateTeamBtn").addEventListener("click", () => createPmDevQaTemplate(renderSettingsTab));
+  wrap.querySelector("#reviewTemplateTeamBtn").addEventListener("click", () => createCodeReviewTemplate(renderSettingsTab));
 
   for (const team of data.teams) {
     const row = document.createElement("div");
@@ -1102,18 +1719,40 @@ function renderRightPanel(team, deps) {
   // Status bar
   const statusBar = document.createElement("div");
   statusBar.className = "team-status-bar";
-  const statusLabel = run.running ? "运行中" : run.completed ? "已完成" : run.error ? "异常" : "就绪";
+  const mode = effectiveTeamRunMode(team, run);
+  const statusLabel = run.running && run.phase === "planning" ? "计划中" : run.running ? "运行中" : run.completed ? "已完成" : run.error ? "异常" : "就绪";
   const statusClass = run.running ? "is-running" : run.completed ? "is-done" : run.error ? "is-error" : "is-idle";
   const stepCount = (run.stepHistory || []).length;
   statusBar.innerHTML = `
     <span class="team-status-badge team-status-${statusClass}">${statusLabel}</span>
-    <span class="team-status-info">${stepCount} 步${run.runId ? ` · ${escapeHtml(String(run.runId).slice(0, 8))}` : ""}</span>
+    <span class="team-status-info">${teamRunModeLabel(mode)} · ${stepCount} 步${run.runId ? ` · ${escapeHtml(String(run.runId).slice(0, 8))}` : ""}</span>
     <button class="team-mini-btn" id="exportRunJsonBtn" type="button" ${stepCount ? "" : "disabled"}>JSON</button>
     <button class="team-mini-btn" id="exportRunMdBtn" type="button" ${stepCount ? "" : "disabled"}>MD</button>
   `;
   statusBar.querySelector("#exportRunJsonBtn")?.addEventListener("click", () => exportTeamRun(team, run, "json"));
   statusBar.querySelector("#exportRunMdBtn")?.addEventListener("click", () => exportTeamRun(team, run, "md"));
   panel.append(statusBar);
+
+  const overview = document.createElement("div");
+  overview.className = "team-run-overview";
+  const goal = teamGoalText(team, run);
+  const criteria = teamSuccessCriteriaText(team, run);
+  const plan = teamPlanText(run);
+  const roster = team.members.slice(0, 5).map(member => `
+    <div class="team-roster-pill" title="${escapeHtml(member.role || member.rules || member.name)}">
+      <span>${escapeHtml(member.icon || "ID")}</span>${escapeHtml(member.name)}
+    </div>`).join("");
+  overview.innerHTML = `
+    <div class="team-run-overview-head">
+      <span class="team-mode-chip">${escapeHtml(teamRunModeLabel(mode))}</span>
+      <span>${escapeHtml(team.members.length)} 身份 · ${escapeHtml(workflowEdges(team).length)} 交接线</span>
+    </div>
+    ${goal ? `<div class="team-run-field"><span>目标</span><strong>${escapeHtml(summarizeText(goal, 110))}</strong></div>` : ""}
+    ${criteria ? `<div class="team-run-field"><span>验收</span><strong>${escapeHtml(summarizeText(criteria, 110))}</strong></div>` : ""}
+    <div class="team-roster-strip">${roster || `<span class="team-run-muted">暂无身份</span>`}</div>
+    ${plan ? `<div class="team-plan-card"><div class="team-plan-card-head">${run.planAccepted ? "已采纳计划" : "最近计划"}</div><div class="team-plan-preview">${escapeHtml(summarizeText(plan, 220))}</div></div>` : ""}
+  `;
+  panel.append(overview);
 
   // Tab switcher
   const tabs = document.createElement("div");
@@ -1234,7 +1873,12 @@ function renderExecutionLogContent(team, run, container) {
     const step = stepById(team, item.stepId);
     const member = step ? memberById(team, step.memberId) : null;
     const next = item.nextStepId ? stepById(team, item.nextStepId) : null;
-    const nc = nodeColor(step?.nodeType || "work");
+    const nc = item.stepId === "__team_plan"
+      ? { bg: "rgba(99,102,241,0.12)", border: "rgba(129,140,248,0.45)", bar: "#818cf8", icon: "#a5b4fc" }
+      : nodeColor(step?.nodeType || "work");
+    const displayName = step?.name || item.stepName || item.stepId;
+    const displayMemberName = member?.name || item.memberName || "";
+    const displayIcon = member?.icon || (item.stepId === "__team_plan" ? "PLN" : "ID");
     const row = document.createElement("div");
     row.className = `team-log-card${item.status === "error" ? " team-log-error" : ""}`;
     const preview = item.outputPreview || summarizeText(item.output || item.error, 220);
@@ -1242,14 +1886,16 @@ function renderExecutionLogContent(team, run, container) {
     const duration = item.durationMs ? `${Math.round(item.durationMs / 1000)}s` : "";
     const model = [item.providerName, item.model].filter(Boolean).join(" · ");
     const route = item.routeCondition ? `${conditionLabel(item.routeCondition)}${next ? ` → ${next.name}` : ""}` : "";
+    const auditEvents = normalizeAuditEvents(item.auditEvents);
+    const changedFiles = normalizeChangedFiles(item.changedFiles);
     const decisionHtml = item.decision ? `<span class="team-log-decision team-log-decision-${item.decision}">${item.decision}</span>` : "";
     row.innerHTML = `
       <div class="team-log-card-bar" style="background:${item.status === "error" ? "#ef4444" : nc.bar};opacity:0.5;"></div>
       <div class="team-log-card-head">
-        <div class="team-log-avatar" style="background:${nc.bg};border-color:${nc.border};color:${nc.icon};">${escapeHtml(member?.icon || "ID")}</div>
+        <div class="team-log-avatar" style="background:${nc.bg};border-color:${nc.border};color:${nc.icon};">${escapeHtml(displayIcon)}</div>
         <div class="team-log-info">
-          <span class="team-log-name">${escapeHtml(step?.name || item.stepId)}</span>
-          <span class="team-log-meta">${escapeHtml(member?.name || "")}${timeStr ? ` · ${timeStr}` : ""}${duration ? ` · ${duration}` : ""}</span>
+          <span class="team-log-name">${escapeHtml(displayName)}</span>
+          <span class="team-log-meta">${escapeHtml(displayMemberName)}${timeStr ? ` · ${timeStr}` : ""}${duration ? ` · ${duration}` : ""}</span>
         </div>
         <div class="team-log-badges">
           ${decisionHtml}
@@ -1260,8 +1906,11 @@ function renderExecutionLogContent(team, run, container) {
         <div class="team-log-evidence">
           ${model ? `<span>${escapeHtml(model)}</span>` : ""}
           ${item.identityName ? `<span>${escapeHtml(item.identityName)}</span>` : ""}
+          ${item.agentRuntimeName || item.agentRuntimeId ? `<span>${escapeHtml(item.agentRuntimeName || item.agentRuntimeId)}</span>` : ""}
           ${item.cwd ? `<span title="${escapeHtml(item.cwd)}">${escapeHtml(compactPath(item.cwd))}</span>` : ""}
           ${route ? `<span>${escapeHtml(route)}</span>` : ""}
+          ${changedFiles.length ? `<span>${changedFiles.length} files</span>` : ""}
+          ${auditEvents.length ? `<span>${auditEvents.length} events</span>` : ""}
         </div>
         <div class="team-log-preview">${escapeHtml(preview || "--")}</div>
       </div>
@@ -1327,7 +1976,12 @@ function renderConversationTab(team, run, container, deps) {
   for (const item of [...conversation].reverse()) {
     const step = stepById(team, item.stepId);
     const member = step ? memberById(team, step.memberId) : null;
-    const nc = nodeColor(step?.nodeType || "work");
+    const nc = item.stepId === "__team_plan"
+      ? { bg: "rgba(99,102,241,0.12)", border: "rgba(129,140,248,0.45)", icon: "#a5b4fc" }
+      : nodeColor(step?.nodeType || "work");
+    const displayIcon = member?.icon || (item.stepId === "__team_plan" ? "PLN" : "ID");
+    const displayName = member?.name || item.memberName || step?.name || "未知";
+    const displayStepName = step?.name || item.stepName || "";
     const output = String(item.output || "").trim();
     if (!output) continue;
 
@@ -1340,10 +1994,10 @@ function renderConversationTab(team, run, container, deps) {
     const promptPreview = prompt.length > 120 ? prompt.slice(0, 120) + "..." : prompt;
     card.innerHTML = `
       <div class="team-chat-head">
-        <div class="team-chat-avatar" style="background:${nc.bg};border-color:${nc.border};color:${nc.icon};">${escapeHtml(member?.icon || "ID")}</div>
+        <div class="team-chat-avatar" style="background:${nc.bg};border-color:${nc.border};color:${nc.icon};">${escapeHtml(displayIcon)}</div>
         <div class="team-chat-info">
-          <span class="team-chat-name">${escapeHtml(member?.name || step?.name || "未知")}</span>
-          <span class="team-chat-step">${escapeHtml(step?.name || "")}</span>
+          <span class="team-chat-name">${escapeHtml(displayName)}</span>
+          <span class="team-chat-step">${escapeHtml(displayStepName)}</span>
         </div>
         <span class="team-chat-time">${timeStr}</span>
       </div>
@@ -1391,7 +2045,7 @@ function renderConversationTab(team, run, container, deps) {
     messagesArea.append(card);
   }
 
-  // Currently running step
+  // Currently running step with streaming output
   if (run.running) {
     const activeStep = stepById(team, run.currentStepId);
     if (activeStep) {
@@ -1406,13 +2060,25 @@ function renderConversationTab(team, run, container, deps) {
             <span class="team-chat-name">${escapeHtml(member?.name || "未知")}</span>
             <span class="team-chat-step">${escapeHtml(activeStep.name)}</span>
           </div>
-          <span class="team-log-status-badge team-log-status-running">思考中...</span>
+          <span class="team-log-status-badge team-log-status-running">执行中</span>
         </div>
-        <div class="team-chat-body">
+        <div class="team-chat-body team-streaming-body">
           <div class="team-chat-typing"><span></span><span></span><span></span></div>
         </div>
       `;
       messagesArea.append(card);
+
+      // Poll streaming buffer and update the body
+      const streamBody = card.querySelector(".team-streaming-body");
+      const streamInterval = setInterval(() => {
+        const buf = getAssistantBuffer();
+        if (buf && streamBody) {
+          const preview = buf.length > 2000 ? buf.slice(-2000) : buf;
+          streamBody.textContent = preview;
+          streamBody.scrollTop = streamBody.scrollHeight;
+        }
+        if (!run.running) clearInterval(streamInterval);
+      }, 500);
     }
   }
   }
@@ -1440,7 +2106,7 @@ function renderConversationTab(team, run, container, deps) {
     </div>
     <div class="team-chat-composer-foot">
       <div class="team-chat-foot-left">
-        ${isSingleNode ? `<span class="team-chat-mode-tag">单身份</span>` : `<span class="team-chat-mode-tag">工作流</span>`}
+        ${isSingleNode ? `<span class="team-chat-mode-tag">单身份</span>` : `<span class="team-chat-mode-tag">${escapeHtml(teamRunModeLabel(effectiveTeamRunMode(team, run)))}</span>`}
       </div>
       <div class="team-chat-foot-right">
         ${run.running
@@ -1472,9 +2138,7 @@ function renderConversationTab(team, run, container, deps) {
       // Full workflow
       run.task = val;
       save();
-      const entry = stepById(team, team.entryStepId) || team.workflow[0];
-      if (!entry) { toast("请先添加入口节点", "error"); return; }
-      runWorkflow(team, entry.id, val, deps);
+      startTeamRun(team, val, deps);
     }
   });
 
@@ -1517,6 +2181,39 @@ function renderMindmap(team, deps) {
     <marker id="arrow_no" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#ef4444" /></marker>
   `;
   svg.append(defs);
+
+  // Edge click to edit, right-click to delete
+  svg.addEventListener("click", async (event) => {
+    const target = event.target.closest("[data-edge-id]");
+    if (!target) return;
+    event.stopPropagation();
+    const edgeId = target.dataset.edgeId;
+    const edge = workflowEdges(team).find(e => e.id === edgeId);
+    if (!edge) return;
+    const fromStep = stepById(team, edge.from);
+    const toStep = stepById(team, edge.to);
+    const result = await showModal("编辑交接线", [
+      { key: "condition", label: "条件", type: "select", value: edge.condition || "default", options: conditionOptions(edge.condition) },
+      { key: "label", label: "说明", value: edge.label || "", placeholder: "例如：测试不满意返工" },
+    ]);
+    if (!result) return;
+    const edges = workflowEdges(team).map(e => e.id === edgeId ? { ...e, condition: result.condition || "default", label: result.label || "" } : e);
+    await saveGraph(team, { workflowEdges: edges }, deps.renderSettingsTab);
+  });
+  svg.addEventListener("contextmenu", async (event) => {
+    const target = event.target.closest("[data-edge-id]");
+    if (!target) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const edgeId = target.dataset.edgeId;
+    const edge = workflowEdges(team).find(e => e.id === edgeId);
+    if (!edge) return;
+    const fromStep = stepById(team, edge.from);
+    const toStep = stepById(team, edge.to);
+    if (!await showConfirm("删除连线", `删除从「${fromStep?.name || "?"}」到「${toStep?.name || "?"}」的连线？`)) return;
+    await deleteEdge(team, edge, deps.renderSettingsTab);
+  });
+
   content.append(spacer, svg);
   canvas.append(content);
 
@@ -1596,6 +2293,57 @@ function renderMindmap(team, deps) {
   });
   settingsBody.append(canvas);
 
+  // Minimap
+  const MINIMAP_W = 150, MINIMAP_H = 90;
+  const minimap = document.createElement("canvas");
+  minimap.width = MINIMAP_W;
+  minimap.height = MINIMAP_H;
+  minimap.className = "team-minimap";
+  minimap.style.cssText = `position:absolute;bottom:12px;right:12px;width:${MINIMAP_W}px;height:${MINIMAP_H}px;border:1px solid rgba(255,255,255,0.1);border-radius:6px;background:rgba(15,18,24,0.85);z-index:10;cursor:pointer;`;
+  canvas.style.position = "relative";
+  canvas.append(minimap);
+
+  const hasCanvasCtx = typeof minimap.getContext === "function";
+  function drawMinimap() {
+    if (!hasCanvasCtx) return;
+    const ctx = minimap.getContext("2d");
+    ctx.clearRect(0, 0, MINIMAP_W, MINIMAP_H);
+    const scaleX = MINIMAP_W / CANVAS_W;
+    const scaleY = MINIMAP_H / CANVAS_H;
+    // Draw nodes as small rectangles
+    for (const step of team.workflow) {
+      const x = (step.x || 80) * scaleX;
+      const y = (step.y || 80) * scaleY;
+      const w = NODE_W * scaleX;
+      const h = NODE_H * scaleY;
+      const nc = nodeColor(step.nodeType || "work");
+      ctx.fillStyle = nc.bar || "#475569";
+      ctx.fillRect(x, y, Math.max(w, 3), Math.max(h, 2));
+    }
+    // Draw viewport rectangle
+    const scrollLeft = canvas.scrollLeft || 0;
+    const scrollTop = canvas.scrollTop || 0;
+    const viewW = canvas.clientWidth;
+    const viewH = canvas.clientHeight;
+    ctx.strokeStyle = "rgba(255,255,255,0.4)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(scrollLeft * scaleX, scrollTop * scaleY, viewW * scaleX, viewH * scaleY);
+  }
+  drawMinimap();
+
+  // Click minimap to navigate
+  minimap.addEventListener("click", (event) => {
+    const rect = minimap.getBoundingClientRect();
+    const clickX = (event.clientX - rect.left) / MINIMAP_W;
+    const clickY = (event.clientY - rect.top) / MINIMAP_H;
+    canvas.scrollLeft = clickX * CANVAS_W - canvas.clientWidth / 2;
+    canvas.scrollTop = clickY * CANVAS_H - canvas.clientHeight / 2;
+    drawMinimap();
+  });
+
+  // Update minimap on scroll
+  canvas.addEventListener("scroll", drawMinimap);
+
   function edgeStyle(condition) {
     const styles = {
       default: { color: "#475569", dash: "", width: 1.5 },
@@ -1629,17 +2377,18 @@ function renderMindmap(team, deps) {
       const isActive = activeEdges.some(e => e.id === edge.id);
       const strokeOpacity = isActive ? "1" : "0.6";
       const markerId = `arrow_${edge.condition || "default"}`;
-      html += `<path d="${d}" fill="none" stroke="${es.color}" stroke-width="${es.width}"${es.dash ? ` stroke-dasharray="${es.dash}"` : ""} marker-end="url(#${markerId})" opacity="${strokeOpacity}"/>`;
+      html += `<path d="${d}" fill="none" stroke="${es.color}" stroke-width="${es.width}"${es.dash ? ` stroke-dasharray="${es.dash}"` : ""} marker-end="url(#${markerId})" opacity="${strokeOpacity}" data-edge-id="${edge.id}" style="pointer-events:auto;cursor:pointer;stroke-linecap:round;"/>`;
       // Label
-      const label = conditionLabel(edge.condition);
+      const iconPrefix = (edge.condition === "pass" || edge.condition === "approve" || edge.condition === "yes") ? "✓ " : (edge.condition === "revise" || edge.condition === "reject" || edge.condition === "no") ? "✗ " : "";
+      const label = iconPrefix + conditionLabel(edge.condition);
       if (label !== "默认") {
         const lx = labelX;
         const ly = labelY;
         const labelBg = edge.condition === "revise" || edge.condition === "reject" || edge.condition === "no" ? "rgba(239,68,68,0.12)" : edge.condition === "pass" || edge.condition === "approve" || edge.condition === "yes" ? "rgba(16,185,129,0.12)" : "rgba(100,116,139,0.12)";
         const labelColor = es.color;
         const labelWidth = Math.max(36, label.length * 12 + 14);
-        html += `<rect x="${lx - labelWidth / 2}" y="${ly - 9}" width="${labelWidth}" height="18" rx="4" fill="${labelBg}" stroke="rgba(15,18,24,0.92)" stroke-width="2" />`;
-        html += `<text x="${lx}" y="${ly + 4}" font-size="10" fill="${labelColor}" text-anchor="middle" font-weight="600">${escapeHtml(label)}</text>`;
+        html += `<rect x="${lx - labelWidth / 2}" y="${ly - 9}" width="${labelWidth}" height="18" rx="4" fill="${labelBg}" stroke="rgba(15,18,24,0.92)" stroke-width="2" data-edge-id="${edge.id}" style="pointer-events:auto;cursor:pointer;" />`;
+        html += `<text x="${lx}" y="${ly + 4}" font-size="10" fill="${labelColor}" text-anchor="middle" font-weight="600" data-edge-id="${edge.id}" style="pointer-events:auto;cursor:pointer;">${escapeHtml(label)}</text>`;
       }
       // Flow dots for active edges
       if (isActive) {
@@ -1653,14 +2402,16 @@ function renderMindmap(team, deps) {
   for (const step of team.workflow) {
     const member = memberById(team, step.memberId);
     const done = Boolean(run.outputs?.[step.id]);
+    const hasError = (run.stepHistory || []).some(h => h.stepId === step.id && h.status === "error");
     const isCurrentRunning = run.running && step.id === run.currentStepId;
     const isActive = step.id === activeId;
     const nc = nodeColor(step.nodeType || "work");
     const node = document.createElement("div");
-    node.className = `team-node-card${isCurrentRunning ? " is-running" : ""}${done ? " is-done" : ""}${isActive ? " is-selected" : ""}`;
+    node.className = `team-node-card${isCurrentRunning ? " is-running" : ""}${done ? " is-done" : ""}${hasError ? " is-error" : ""}${isActive ? " is-selected" : ""}`;
+    node.dataset.stepId = step.id;
     node.style.cssText = `position:absolute;left:${step.x || 80}px;top:${step.y || 80}px;width:${NODE_W}px;min-height:${NODE_H}px;`;
-    const statusClass = isCurrentRunning ? "is-running" : done ? "is-done" : "is-idle";
-    const statusText = isCurrentRunning ? "执行中" : done ? "已完成" : "等待中";
+    const statusClass = isCurrentRunning ? "is-running" : hasError ? "is-error" : done ? "is-done" : "is-idle";
+    const statusText = isCurrentRunning ? "执行中" : hasError ? "失败" : done ? "已完成" : "等待中";
     const providerLabel = member?.providerId ? data.providers.find(p => p.id === member.providerId)?.model || "" : "";
     const typeName = nodeTypeOptions(step.nodeType || "work").find(item => item.value === (step.nodeType || "work"))?.label || "执行";
     const isEntry = step.id === team.entryStepId;
@@ -1692,21 +2443,60 @@ function renderMindmap(team, deps) {
       }
       renderSettingsTab();
     });
-    // Port click: start/end connection
+    // Port click: start/end connection (also supports drag-to-connect)
     node.querySelector(".team-node-port-in")?.addEventListener("click", event => {
       event.stopPropagation();
       if (state.teamConnectFrom) {
         const fromId = state.teamConnectFrom;
         state.teamConnectFrom = "";
         save();
-        connectNodes(team, fromId, step.id, renderSettingsTab);
+        connectNodes(team, fromId, step.id, deps.renderSettingsTab);
       }
     });
-    node.querySelector(".team-node-port-out")?.addEventListener("click", event => {
+    node.querySelector(".team-node-port-out")?.addEventListener("pointerdown", event => {
       event.stopPropagation();
-      state.teamConnectFrom = step.id;
-      save();
-      toast(`起点：${step.name}。点击目标节点的输入端口连接。`, "info");
+      event.preventDefault();
+      // Start drag-to-connect
+      const fromStep = step;
+      const fromX = (fromStep.x || 80) + NODE_W;
+      const fromY = (fromStep.y || 80) + NODE_H / 2;
+      // Create temporary drag line
+      let dragLine = svg.querySelector(".team-drag-line");
+      if (!dragLine) {
+        dragLine = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        dragLine.classList.add("team-drag-line");
+        dragLine.setAttribute("fill", "none");
+        dragLine.setAttribute("stroke", "#3b82f6");
+        dragLine.setAttribute("stroke-width", "2");
+        dragLine.setAttribute("stroke-dasharray", "6,3");
+        dragLine.setAttribute("opacity", "0.8");
+        dragLine.style.pointerEvents = "none";
+        svg.appendChild(dragLine);
+      }
+      const onMove = moveEvent => {
+        const rect = canvas.getBoundingClientRect();
+        const toX = (moveEvent.clientX - rect.left + canvas.scrollLeft) / zoom;
+        const toY = (moveEvent.clientY - rect.top + canvas.scrollTop) / zoom;
+        const cp = Math.max(50, Math.abs(toX - fromX) * 0.5);
+        dragLine.setAttribute("d", `M ${fromX} ${fromY} C ${fromX + cp} ${fromY}, ${toX - cp} ${toY}, ${toX} ${toY}`);
+      };
+      const onUp = async upEvent => {
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        dragLine.remove();
+        // Check if we're over an input port
+        const target = document.elementFromPoint(upEvent.clientX, upEvent.clientY);
+        const targetPort = target?.closest(".team-node-port-in");
+        const targetNode = target?.closest(".team-node-card");
+        if (targetPort && targetNode) {
+          const toStepId = targetNode.dataset.stepId;
+          if (toStepId && toStepId !== fromStep.id) {
+            await connectNodes(team, fromStep.id, toStepId, deps.renderSettingsTab);
+          }
+        }
+      };
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
     });
     // Right-click context
     node.addEventListener("contextmenu", event => {
@@ -1774,8 +2564,7 @@ function renderMindmap(team, deps) {
         event.preventDefault();
         if (run.running) { stopWorkflow(team.id); }
         else {
-          const entry = stepById(team, team.entryStepId) || team.workflow[0];
-          if (entry && run.task?.trim()) runWorkflow(team, entry.id, run.task, deps);
+          if (run.task?.trim()) startTeamRun(team, run.task, deps);
         }
       }
     }
@@ -1892,9 +2681,11 @@ function renderTeamDetail(team, deps) {
   const totalCount = team.workflow.filter(s => s.nodeType !== "start").length;
   const projectPath = team.cwd || state.cwd || "";
   const shortPath = projectPath ? (projectPath.length > 30 ? "..." + projectPath.slice(-27) : projectPath) : "未设置项目";
+  const mode = effectiveTeamRunMode(team, run);
   topbar.innerHTML = `
     <select class="team-topbar-select" id="teamSelect">${data.teams.map(t => `<option value="${t.id}" ${t.id === team.id ? "selected" : ""}>${escapeHtml(t.name)}</option>`).join("")}</select>
     <span class="team-topbar-path" title="${escapeHtml(projectPath)}">📁 ${escapeHtml(shortPath)}</span>
+    <span class="team-topbar-mode">${escapeHtml(teamRunModeLabel(mode))}</span>
     <span class="team-topbar-info">${team.members.length} 身份 · ${team.workflow.length} 节点${run.running ? ` · ${doneCount}/${totalCount}` : ""}</span>
     <button class="team-composer-btn" id="editTeamBtn" title="设置">⚙</button>
   `;
@@ -1911,28 +2702,71 @@ function renderTeamDetail(team, deps) {
 
   // Bottom composer
   const composer = document.createElement("div");
-  composer.className = "team-composer";
+  composer.className = "team-composer team-run-control";
+  const modeDef = TEAM_RUN_MODES.find(item => item.id === mode) || TEAM_RUN_MODES[0];
+  const showGoalFields = mode === "goal";
+  const planPreview = teamPlanText(run);
   composer.innerHTML = `
-    <input class="team-composer-input" id="teamTaskInput" placeholder="输入任务描述..." value="${escapeHtml(run.task || "")}">
-    <button class="team-composer-btn" id="resetRunBtn" title="清空">↺</button>
-    ${run.running
-      ? `<button class="team-run-btn is-stop" id="stopWorkflowBtn" title="停止">■</button>`
-      : `<button class="team-run-btn" id="startFlowBtn" title="运行">▶</button>`
-    }
+    <div class="team-composer-main">
+      <div class="team-mode-tabs" role="tablist">
+        ${TEAM_RUN_MODES.map(item => `<button type="button" class="team-mode-tab${item.id === mode ? " is-active" : ""}" data-mode="${item.id}" ${run.running ? "disabled" : ""}>${escapeHtml(item.label)}</button>`).join("")}
+      </div>
+      <input class="team-composer-input" id="teamTaskInput" placeholder="${escapeHtml(modeDef.placeholder)}" value="${escapeHtml(run.task || "")}">
+      ${showGoalFields ? `
+        <div class="team-goal-grid">
+          <input class="team-composer-input" id="teamGoalInput" placeholder="目标" value="${escapeHtml(teamGoalText(team, run))}">
+          <input class="team-composer-input" id="teamCriteriaInput" placeholder="验收标准" value="${escapeHtml(teamSuccessCriteriaText(team, run))}">
+        </div>
+      ` : ""}
+      ${mode === "plan" && planPreview ? `
+        <div class="team-plan-inline">
+          <span>${escapeHtml(summarizeText(planPreview, 160))}</span>
+          <button type="button" class="team-mini-btn" id="acceptPlanRunBtn">采用并执行</button>
+        </div>
+      ` : ""}
+    </div>
+    <div class="team-composer-actions">
+      <button class="team-composer-btn" id="resetRunBtn" title="清空">↺</button>
+      ${run.running
+        ? `<button class="team-run-btn is-stop" id="stopWorkflowBtn" title="停止">■</button>`
+        : run.paused
+          ? `<button class="team-run-btn is-retry" id="retryStepBtn" title="重试失败步骤">↻</button>`
+          : `<button class="team-run-btn" id="startFlowBtn" title="${mode === "plan" ? "生成计划" : "运行"}">▶</button>`
+      }
+    </div>
   `;
+  composer.querySelectorAll("[data-mode]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      run.mode = btn.dataset.mode;
+      run.updatedAt = Date.now();
+      save();
+      renderSettingsTab();
+    });
+  });
   composer.querySelector("#teamTaskInput")?.addEventListener("input", e => {
     run.task = e.target.value || "";
     run.updatedAt = Date.now();
     save();
   });
+  composer.querySelector("#teamGoalInput")?.addEventListener("input", e => {
+    run.goal = e.target.value || "";
+    run.updatedAt = Date.now();
+    save();
+  });
+  composer.querySelector("#teamCriteriaInput")?.addEventListener("input", e => {
+    run.successCriteria = e.target.value || "";
+    run.updatedAt = Date.now();
+    save();
+  });
+  composer.querySelector("#acceptPlanRunBtn")?.addEventListener("click", () => acceptPlanAndRun(team, deps));
   if (run.running) {
     composer.querySelector("#stopWorkflowBtn")?.addEventListener("click", () => stopWorkflow(team.id));
+  } else if (run.paused) {
+    composer.querySelector("#retryStepBtn")?.addEventListener("click", () => retryStep(team, deps));
+    composer.querySelector("#resetRunBtn")?.addEventListener("click", () => resetRun(team, renderSettingsTab));
   } else {
     composer.querySelector("#startFlowBtn")?.addEventListener("click", () => {
-      const entry = stepById(team, team.entryStepId) || team.workflow[0];
-      if (!entry) { toast("请先添加入口节点", "error"); return; }
-      if (!run.task?.trim()) { toast("请先输入任务", "error"); return; }
-      runWorkflow(team, entry.id, run.task, deps);
+      startTeamRun(team, run.task, deps);
     });
     composer.querySelector("#resetRunBtn")?.addEventListener("click", () => resetRun(team, renderSettingsTab));
   }
@@ -1955,13 +2789,15 @@ export function renderTeamsSettings(deps) {
     empty.className = "scard";
     empty.innerHTML = `
       <div class="slist-name">还没有 Team 工作流</div>
-      <div class="slist-sub" style="white-space:normal;">Teams 是由用户绘制的身份脑图：先定义身份，再把身份节点连成问题交接流。可以从 PM-Dev-QA 模板开始。</div>
+      <div class="slist-sub" style="white-space:normal;">Teams 是由用户绘制的身份脑图：先定义身份，再把身份节点连成问题交接流。第一次体验建议从轻量代码审查模板开始。</div>
       <div class="scard-actions" style="margin-top:10px;">
+        <button class="st-btn t-btn--primary t-btn--sm" id="emptyReviewTemplateTeamBtn" type="button">创建代码审查模板</button>
         <button class="st-btn t-btn--primary t-btn--sm" id="emptyTemplateTeamBtn" type="button">创建 PM-Dev-QA 模板</button>
         <button class="st-btn t-btn--link" id="emptyCreateTeamBtn" type="button">空白 Team</button>
       </div>
     `;
     settingsBody.append(empty);
+    empty.querySelector("#emptyReviewTemplateTeamBtn").addEventListener("click", () => createCodeReviewTemplate(deps.renderSettingsTab));
     empty.querySelector("#emptyTemplateTeamBtn").addEventListener("click", () => createPmDevQaTemplate(deps.renderSettingsTab));
     empty.querySelector("#emptyCreateTeamBtn").addEventListener("click", () => createTeamDlg(deps.renderSettingsTab));
     return;

@@ -130,6 +130,16 @@ export async function loadRunners() {
   return r;
 }
 
+export async function loadAgentRuntimes() {
+  const r = await safeBridge("listAgentRuntimes", null, {
+    configs: state.agentRuntimeConfigs || {},
+    customRuntimes: state.customAgentRuntimes || [],
+  });
+  if (r.ok) data.agentRuntimes = r.data || [];
+  refreshSettingsIfOpen("runners");
+  return r;
+}
+
 export async function loadDiag() {
   const r = await safeBridge("diagnostics", null, { cwd: state.cwd, claudePath: state.claudePath, runnerStrategy: state.runnerStrategy, permissionMode: state.permissionMode });
   data.diagnostics = r?.data || r || null;

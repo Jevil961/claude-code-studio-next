@@ -263,6 +263,9 @@ test("teams settings renders user-defined members and workflow steps", async () 
     name: "WorkBuddy",
     description: "User-defined team",
     rules: "Escalate blockers.",
+    runMode: "goal",
+    goal: "Coordinate review work",
+    successCriteria: "Plan and review are visible",
     members: [{
       id: "member-a",
       name: "Reviewer",
@@ -288,6 +291,8 @@ test("teams settings renders user-defined members and workflow steps", async () 
   assert.match(html, /WorkBuddy/);
   assert.match(html, /Reviewer/);
   assert.match(html, /Review/);
+  assert.match(html, /team-mode-tabs/);
+  assert.match(html, /Coordinate review work/);
 });
 
 test("teams canvas can pan from blank content layers but not nodes", async () => {
@@ -428,15 +433,21 @@ test("PM Dev QA template does not default team members into plan mode", () => {
   assert.match(templateSource, /permissionMode:\s*"auto"/);
 });
 
-test("teams runtime does not propagate plan permission mode into handoff runs", () => {
+test("teams runtime supports plan permission mode and team run modes", () => {
   const source = fs.readFileSync("public/ui/settings/teams.js", "utf8");
 
+  assert.match(source, /const TEAM_RUN_MODES/);
+  assert.match(source, /composeTeamPlanningPrompt/);
   assert.match(source, /function effectiveTeamPermissionMode/);
-  assert.match(source, /member\?\.permissionMode === "bypass" \? "bypass" : "auto"/);
+  assert.match(source, /\["plan", "bypass"\]\.includes\(member\?\.permissionMode\)/);
+  assert.match(source, /agentRuntimeId: member\?\.agentRuntimeId \|\| ""/);
+  assert.match(source, /Agent Runtime/);
+  assert.match(source, /agentRuntimeName/);
   assert.doesNotMatch(source, /setPerm\?\.\(member\.permissionMode\)/);
-  assert.doesNotMatch(source, /\{ value: "plan", label: "Plan" \}/);
+  assert.match(source, /\{ value: "plan", label: "Plan" \}/);
+  assert.match(source, /team-mode-tabs/);
+  assert.match(source, /acceptPlanAndRun/);
 });
-
 test("agent task center includes a dedicated diff review overlay", () => {
   const source = fs.readFileSync("public/ui/settings/tasks.js", "utf8");
   const styles = fs.readFileSync("public/styles.css", "utf8");
@@ -513,6 +524,7 @@ test("runner settings expose health and runtime metadata", () => {
 
 test("tauri bridge exposes teams workflow and agent task methods", () => {
   const source = fs.readFileSync("public/tauri-bridge.js", "utf8");
+  const backend = fs.readFileSync("src/backend-host.mjs", "utf8");
   const calls = [];
   const window = {
     __TAURI__: {
@@ -537,6 +549,7 @@ test("tauri bridge exposes teams workflow and agent task methods", () => {
     "deleteTeamStep",
     "updateTeamWorkflow",
     "composeTeamStepPrompt",
+    "composeTeamPlanningPrompt",
     "listAgentTasks",
     "createAgentTask",
     "createAgentTaskBatch",
@@ -556,4 +569,5 @@ test("tauri bridge exposes teams workflow and agent task methods", () => {
   assert.equal(calls[0].command, "backend_call");
   assert.equal(calls[0].payload.method, "listTeams");
   assert.equal(calls[0].payload.args.length, 0);
+  assert.match(backend, /composeTeamPlanningPrompt/);
 });

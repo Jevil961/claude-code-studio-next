@@ -79,6 +79,7 @@
     deleteTeamStep: "teams:deleteStep",
     updateTeamWorkflow: "teams:updateWorkflow",
     composeTeamStepPrompt: "teams:composeStepPrompt",
+    composeTeamPlanningPrompt: "teams:composePlanningPrompt",
     listAgentTasks: "agentTasks:list",
     createAgentTask: "agentTasks:create",
     createAgentTaskBatch: "agentTasks:createBatch",

@@ -18,6 +18,10 @@ test("teams can be user-defined and persisted", async () => {
     name: "Launch Team",
     description: "Human reviewed multi-agent workflow",
     rules: "Keep handoffs concise.",
+    runMode: "goal",
+    goal: "Ship a real Teams workflow.",
+    successCriteria: "Plan is accepted and final output is user-facing.",
+    planningRules: "Assign ownership before implementation.",
   });
   const reviewer = teams.createTeamMember(team.id, {
     name: "Reviewer",
@@ -26,6 +30,7 @@ test("teams can be user-defined and persisted", async () => {
     rules: "Return findings first.",
     providerId: "provider-a",
     identityId: "identity-reviewer",
+    agentRuntimeId: "codex",
     permissionMode: "plan",
   }).member;
   const builder = teams.createTeamMember(team.id, {
@@ -58,7 +63,25 @@ test("teams can be user-defined and persisted", async () => {
   assert.equal(stored.finalStepId, buildStep.id);
   assert.equal(stored.members[0].providerId, "provider-a");
   assert.equal(stored.members[0].identityId, "identity-reviewer");
+  assert.equal(stored.members[0].agentRuntimeId, "codex");
   assert.equal(stored.workflow[1].requiresApproval, false);
+  assert.equal(stored.runMode, "goal");
+  assert.equal(stored.goal, "Ship a real Teams workflow.");
+  assert.equal(stored.successCriteria, "Plan is accepted and final output is user-facing.");
+  assert.equal(stored.planningRules, "Assign ownership before implementation.");
+
+  const updatedTeam = teams.updateTeam(team.id, {
+    runMode: "plan",
+    goal: "Make Teams feel coordinated.",
+    successCriteria: "Every step sees the shared plan.",
+    planningRules: "Call out risks and handoff order.",
+  });
+  assert.equal(updatedTeam.runMode, "plan");
+  assert.equal(updatedTeam.goal, "Make Teams feel coordinated.");
+  assert.equal(updatedTeam.successCriteria, "Every step sees the shared plan.");
+
+  const updatedMember = teams.updateTeamMember(team.id, reviewer.id, { agentRuntimeId: "opencode" }).member;
+  assert.equal(updatedMember.agentRuntimeId, "opencode");
 
   const updatedStep = teams.updateTeamStep(team.id, buildStep.id, { requiresApproval: "false" }).step;
   assert.equal(updatedStep.requiresApproval, false);
@@ -70,6 +93,12 @@ test("teams can be user-defined and persisted", async () => {
     previousOutputs: {
       [reviewStep.id]: "Risk: context switching can be confusing.",
     },
+    teamRunContext: {
+      mode: "goal",
+      goal: "Make Teams feel coordinated.",
+      successCriteria: "Every step sees the shared plan.",
+      plan: "Reviewer checks risks, Builder implements the accepted plan.",
+    },
   });
 
   assert.equal(prompt.member.id, builder.id);
@@ -79,6 +108,11 @@ test("teams can be user-defined and persisted", async () => {
   assert.match(prompt.prompt, /Ship Teams workflows/);
   assert.match(prompt.prompt, /Previous accepted outputs/);
   assert.match(prompt.prompt, /Risk: context switching can be confusing/);
+  assert.match(prompt.prompt, /Team operating context/);
+  assert.match(prompt.prompt, /Shared goal: Make Teams feel coordinated/);
+  assert.match(prompt.prompt, /Success criteria: Every step sees the shared plan/);
+  assert.match(prompt.prompt, /Team roster/);
+  assert.match(prompt.prompt, /Accepted team plan/);
   assert.match(prompt.prompt, /This is the final mapped step/);
   assert.match(prompt.prompt, /Final delivery contract/);
   assert.equal(prompt.nextSteps.length, 0);
@@ -96,6 +130,52 @@ test("teams can be user-defined and persisted", async () => {
   assert.match(firstStepPrompt.prompt, /Handoff contract/);
   assert.match(firstStepPrompt.prompt, /TEAM_HANDOFF_JSON/);
   assert.equal(firstStepPrompt.nextSteps[0].id, buildStep.id);
+});
+
+test("teams can compose and parse a real planning pass", async () => {
+  const teams = await import("../src/teams.js");
+  const team = teams.createTeam({
+    name: "Goal Team",
+    runMode: "goal",
+    goal: "Improve Teams orchestration.",
+    successCriteria: "Planner, builder, and reviewer agree on handoffs.",
+    planningRules: "Surface blockers before execution.",
+    members: [
+      { id: "pm", name: "Planner", role: "Define goals and handoffs." },
+      { id: "dev", name: "Builder", role: "Implement the accepted plan." },
+    ],
+    workflow: [
+      { id: "plan", name: "Plan", memberId: "pm", nodeType: "intake" },
+      { id: "build", name: "Build", memberId: "dev", nodeType: "work" },
+    ],
+    workflowEdges: [{ from: "plan", to: "build", condition: "default" }],
+    entryStepId: "plan",
+    finalStepId: "build",
+  });
+
+  const planning = teams.composeTeamPlanningPrompt({
+    teamId: team.id,
+    task: "Add plan and goal modes.",
+    goal: "Make Teams feel like a coordinated group.",
+    successCriteria: "Plan is explicit and flows into execution.",
+  });
+
+  assert.match(planning.prompt, /planning coordinator/);
+  assert.match(planning.prompt, /Team roster/);
+  assert.match(planning.prompt, /Workflow map/);
+  assert.match(planning.prompt, /TEAM_PLAN_JSON/);
+  assert.match(planning.prompt, /Make Teams feel like a coordinated group/);
+
+  const parsed = teams.extractTeamPlan(`Summary first.
+
+TEAM_PLAN_JSON
+\`\`\`json
+{"goal":"Coordinate the team","successCriteria":["Plan shared"],"steps":[{"owner":"Planner","work":"Scope"}],"risks":["Vague handoff"],"handoffOrder":["Planner","Builder"]}
+\`\`\``);
+  assert.equal(parsed.goal, "Coordinate the team");
+  assert.deepEqual(parsed.successCriteria, ["Plan shared"]);
+  assert.equal(parsed.steps[0].owner, "Planner");
+  assert.deepEqual(parsed.handoffOrder, ["Planner", "Builder"]);
 });
 
 test("deleting a team member keeps workflow steps but clears assignment", async () => {
@@ -182,6 +262,86 @@ test("teams support conditional review loops and final approval prompts", async 
   });
   assert.match(outputPrompt.prompt, /final output node/);
   assert.doesNotMatch(outputPrompt.prompt, /include DECISION: approve/);
+});
+
+test("workflow failure recovery and retry planning preserves accepted handoffs", async () => {
+  const teams = await import("../src/teams.js");
+  const team = teams.createTeam({ name: "Recoverable PM Dev QA" });
+  const pm = teams.createTeamMember(team.id, { name: "PM" }).member;
+  const dev = teams.createTeamMember(team.id, { name: "Developer" }).member;
+  const qa = teams.createTeamMember(team.id, { name: "QA" }).member;
+  const intake = teams.createTeamStep(team.id, { name: "PM Brief", nodeType: "intake", memberId: pm.id }).step;
+  const build = teams.createTeamStep(team.id, { name: "Dev Build", nodeType: "work", memberId: dev.id }).step;
+  const review = teams.createTeamStep(team.id, { name: "QA Review", nodeType: "review", memberId: qa.id }).step;
+  const approval = teams.createTeamStep(team.id, { name: "PM Approval", nodeType: "approval", memberId: pm.id }).step;
+  const output = teams.createTeamStep(team.id, { name: "Output", nodeType: "final", memberId: pm.id }).step;
+  const graph = teams.updateTeamWorkflow(team.id, {
+    entryStepId: intake.id,
+    finalStepId: output.id,
+    workflowEdges: [
+      { from: intake.id, to: build.id, condition: "default" },
+      { from: build.id, to: review.id, condition: "default" },
+      { from: review.id, to: build.id, condition: "revise" },
+      { from: review.id, to: approval.id, condition: "pass" },
+      { from: approval.id, to: output.id, condition: "yes" },
+      { from: approval.id, to: review.id, condition: "no" },
+    ],
+  });
+
+  assert.equal(teams.extractTeamDecision("QA found a regression.\nDECISION: revise"), "revise");
+  const reviseRoute = teams.selectTeamRoute(graph, review.id, "Needs another pass.\nDECISION: revise");
+  assert.equal(reviseRoute.needsChoice, false);
+  assert.equal(reviseRoute.step.id, build.id);
+  const passRoute = teams.selectTeamRoute(graph, review.id, "Looks good.\nDECISION: approve");
+  assert.equal(passRoute.step.id, approval.id);
+  const unclearRoute = teams.selectTeamRoute(graph, review.id, "I have concerns but no route.");
+  assert.equal(unclearRoute.needsChoice, true);
+  assert.deepEqual(unclearRoute.choices.map(choice => choice.condition), ["revise", "pass"]);
+
+  const initialRun = {
+    id: "run-1",
+    teamId: graph.id,
+    task: "Fix Teams startup",
+    outputs: { [intake.id]: "PM scope accepted." },
+    stepHistory: [{ stepId: intake.id, status: "done", output: "PM scope accepted." }],
+    running: true,
+    completed: false,
+  };
+  const failedRun = teams.recordTeamStepFailure(initialRun, graph, build.id, new Error("tool execution failed"), {
+    prompt: "Build the fix.",
+    output: "npm test failed before completion.",
+    durationMs: 1234,
+    auditEvents: [
+      { type: "tool", title: "run_command", detail: "npm test", tool: "run_command", ok: false, durationMs: 45, paths: ["src/teams.js"] },
+    ],
+    changedFiles: ["src/teams.js", "src/teams.js"],
+    errorCategory: "runtime_failed",
+    stderr: "test command exited with code 1",
+  });
+
+  assert.equal(failedRun.running, false);
+  assert.equal(failedRun.completed, false);
+  assert.equal(failedRun.error, "tool execution failed");
+  assert.equal(failedRun.currentStepId, build.id);
+  assert.equal(failedRun.failedStepId, build.id);
+  assert.equal(failedRun.outputs[intake.id], "PM scope accepted.");
+  assert.equal(failedRun.stepHistory.at(-1).status, "error");
+  assert.equal(failedRun.stepHistory.at(-1).stepName, "Dev Build");
+  assert.match(failedRun.stepHistory.at(-1).outputPreview, /npm test failed/);
+  assert.equal(failedRun.stepHistory.at(-1).auditEvents[0].tool, "run_command");
+  assert.deepEqual(failedRun.stepHistory.at(-1).changedFiles, ["src/teams.js"]);
+  assert.equal(failedRun.stepHistory.at(-1).errorCategory, "runtime_failed");
+  assert.match(failedRun.stepHistory.at(-1).stderrPreview, /exited with code 1/);
+
+  const retry = teams.planTeamRetry(failedRun, graph);
+  assert.equal(retry.canRetry, true);
+  assert.equal(retry.stepId, build.id);
+  assert.equal(retry.step.name, "Dev Build");
+  assert.equal(retry.task, "Fix Teams startup");
+  assert.equal(retry.previousOutputs[intake.id], "PM scope accepted.");
+  assert.equal(retry.run.error, "");
+  assert.equal(retry.run.failedStepId, "");
+  assert.equal(retry.run.stepHistory.some(item => item.stepId === build.id && item.status === "error"), false);
 });
 
 test("creating teams preserves an initial workflow graph", async () => {
